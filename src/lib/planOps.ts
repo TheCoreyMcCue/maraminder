@@ -211,7 +211,7 @@ export async function updateSession(
 }
 
 export async function getTrends(): Promise<{
-  mpHrHistory: Array<{ date: string; avgHr: number; weekNo: number }>;
+  mpHrHistory: Array<{ date: string; avgHr: number; pace?: string; weekNo: number; isSegment: boolean }>;
   easyPaceHistory: Array<{ date: string; pace: string; weekNo: number }>;
   weeklyVolume: Array<{ weekNo: number; targetKm: number; actualKm: number }>;
 }> {
@@ -219,8 +219,18 @@ export async function getTrends(): Promise<{
   const logged = plan.sessions.filter((s) => s.status === "done" && s.actual);
 
   const mpHrHistory = logged
-    .filter((s) => s.zoneRefs.includes("MP") && s.actual?.avgHr)
-    .map((s) => ({ date: s.date, avgHr: s.actual!.avgHr!, weekNo: s.weekNo }))
+    .filter((s) => s.zoneRefs.includes("MP") && (s.actual?.segmentHr?.MP ?? s.actual?.avgHr))
+    .map((s) => {
+      const segHr = s.actual!.segmentHr?.MP;
+      const segPace = s.actual!.segmentPace?.MP ?? s.actual!.avgPacePerKm;
+      return {
+        date: s.date,
+        avgHr: segHr ?? s.actual!.avgHr!,
+        pace: segPace,
+        weekNo: s.weekNo,
+        isSegment: !!segHr,
+      };
+    })
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const easyPaceHistory = logged

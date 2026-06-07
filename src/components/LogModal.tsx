@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { Session, ZoneSet, Actual } from "@/lib/types";
+import type { Session, ZoneSet, Actual, ZoneKey } from "@/lib/types";
 import { formatSessionTarget, computePaceFromDistTime } from "@/lib/zones";
 import { logActual } from "@/lib/planOps";
 
@@ -11,29 +11,71 @@ interface Props {
   onSaved: () => void;
 }
 
+const QUALITY_ZONES: ZoneKey[] = ["S", "MP", "T", "I"];
+
+const ZONE_HR_LABELS: Record<string, string> = {
+  S: "Steady HR",
+  MP: "MP HR",
+  T: "Threshold HR",
+  I: "Interval HR",
+};
+
 export default function LogModal({ session, zones, onClose, onSaved }: Props) {
   const existing = session.actual;
+
   const [dist, setDist] = useState(existing?.distanceKm?.toString() ?? session.targetDistanceKm?.toString() ?? "");
   const [dur, setDur] = useState(existing?.durationMin?.toString() ?? session.targetDurationMin?.toString() ?? "");
-  const [hr, setHr] = useState(existing?.avgHr?.toString() ?? "");
+  const [overallHr, setOverallHr] = useState(existing?.avgHr?.toString() ?? "");
   const [rpe, setRpe] = useState(existing?.rpe?.toString() ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [stravaUrl, setStravaUrl] = useState(existing?.stravaUrl ?? "");
   const [saving, setSaving] = useState(false);
 
-  const computedPace =
-    dist && dur ? computePaceFromDistTime(parseFloat(dist), parseFloat(dur)) : "—";
+  // Per-zone HR state — only for quality zones present in this session
+  const sessionQualityZones = session.zoneRefs.filter((z): z is ZoneKey =>
+    QUALITY_ZONES.includes(z as ZoneKey)
+  );
+  const [segmentHr, setSegmentHr] = useState<Partial<Record<ZoneKey, string>>>(
+    () => Object.fromEntries(
+      sessionQualityZones.map((z) => [z, existing?.segmentHr?.[z]?.toString() ?? ""])
+    )
+  );
+  const [segmentPace, setSegmentPace] = useState<Partial<Record<ZoneKey, string>>>(
+    () => Object.fromEntries(
+      sessionQualityZones.map((z) => [z, existing?.segmentPace?.[z] ?? ""])
+    )
+  );
+
+  const computedPace = dist && dur
+    ? computePaceFromDistTime(parseFloat(dist), parseFloat(dur))
+    : "—";
 
   async function handleSave() {
     if (!dist || !dur) return;
     setSaving(true);
+
+    const builtSegmentHr: Partial<Record<ZoneKey, number>> = {};
+    for (const [k, v] of Object.entries(segmentHr)) {
+      if (v) builtSegmentHr[k as ZoneKey] = parseInt(v);
+    }
+
+    const builtSegmentPace: Partial<Record<ZoneKey, string>> = {};
+    for (const [k, v] of Object.entries(segmentPace)) {
+      if (v.trim()) builtSegmentPace[k as ZoneKey] = v.trim();
+    }
+
     const actual: Omit<Actual, "targetSnapshot"> = {
       distanceKm: parseFloat(dist),
       durationMin: parseFloat(dur),
       avgPacePerKm: computedPace !== "—" ? computedPace : undefined,
-      avgHr: hr ? parseInt(hr) : undefined,
+      avgHr: overallHr ? parseInt(overallHr) : undefined,
+      segmentHr: Object.keys(builtSegmentHr).length > 0 ? builtSegmentHr : undefined,
+      segmentPace: Object.keys(builtSegmentPace).length > 0 ? builtSegmentPace : undefined,
       rpe: rpe ? parseInt(rpe) : undefined,
       notes: notes || undefined,
+      stravaUrl: stravaUrl.trim() || undefined,
     };
+
     await logActual(session.sk, actual);
     setSaving(false);
     onSaved();
@@ -44,77 +86,126 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle" />
         <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{session.title}</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>
           {formatSessionTarget(session, zones)}
         </div>
 
+        {/* Distance + duration */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>DISTANCE (km)</span>
-            <input
-              type="number"
-              step="0.1"
-              value={dist}
+          <Field label="DISTANCE (km)">
+            <input type="number" step="0.1" value={dist}
               onChange={(e) => setDist(e.target.value)}
-              style={inputStyle}
-              placeholder={session.targetDistanceKm?.toString() ?? "0"}
-            />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>DURATION (min)</span>
-            <input
-              type="number"
-              value={dur}
+              style={inputStyle} placeholder={session.targetDistanceKm?.toString() ?? "0"} />
+          </Field>
+          <Field label="DURATION (min)">
+            <input type="number" value={dur}
               onChange={(e) => setDur(e.target.value)}
-              style={inputStyle}
-              placeholder={session.targetDurationMin?.toString() ?? "0"}
-            />
-          </label>
+              style={inputStyle} placeholder={session.targetDurationMin?.toString() ?? "0"} />
+          </Field>
         </div>
 
         {computedPace !== "—" && (
-          <div style={{ fontSize: 13, color: "var(--accent)", marginBottom: 12, fontWeight: 600 }}>
+          <div style={{ fontSize: 13, color: "var(--accent)", marginBottom: 14, fontWeight: 600 }}>
             Avg pace: {computedPace}/km
           </div>
         )}
 
+        {/* Quality zone HR fields — shown when session has MP/T/I/S blocks */}
+        {sessionQualityZones.length > 0 && (
+          <div style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "12px 14px",
+            marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: 10 }}>
+              QUALITY BLOCK HR
+            </div>
+            {sessionQualityZones.map((z) => (
+              <div key={z} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <Field label={`${ZONE_HR_LABELS[z] ?? z} HR (bpm)`}>
+                  <input
+                    type="number"
+                    value={segmentHr[z] ?? ""}
+                    onChange={(e) => setSegmentHr((prev) => ({ ...prev, [z]: e.target.value }))}
+                    style={inputStyle}
+                    placeholder="—"
+                  />
+                </Field>
+                <Field label={`${ZONE_HR_LABELS[z] ?? z} Pace (/km)`}>
+                  <input
+                    type="text"
+                    value={segmentPace[z] ?? ""}
+                    onChange={(e) => setSegmentPace((prev) => ({ ...prev, [z]: e.target.value }))}
+                    style={inputStyle}
+                    placeholder="4:16"
+                  />
+                </Field>
+              </div>
+            ))}
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+              HR + pace during the quality blocks only — used for trend tracking.
+            </div>
+          </div>
+        )}
+
+        {/* Overall HR + RPE */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>AVG HR (bpm)</span>
-            <input type="number" value={hr} onChange={(e) => setHr(e.target.value)} style={inputStyle} placeholder="—" />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>RPE (1–10)</span>
-            <input type="number" min={1} max={10} value={rpe} onChange={(e) => setRpe(e.target.value)} style={inputStyle} placeholder="—" />
-          </label>
+          <Field label="OVERALL AVG HR (bpm)">
+            <input type="number" value={overallHr}
+              onChange={(e) => setOverallHr(e.target.value)}
+              style={inputStyle} placeholder="—" />
+          </Field>
+          <Field label="RPE (1–10)">
+            <input type="number" min={1} max={10} value={rpe}
+              onChange={(e) => setRpe(e.target.value)}
+              style={inputStyle} placeholder="—" />
+          </Field>
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 20 }}>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>NOTES</span>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical" }}
-            placeholder="How did it feel?"
+        {/* Notes */}
+        <Field label="NOTES" style={{ marginBottom: 12 }}>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+            rows={3} style={{ ...inputStyle, resize: "vertical" }}
+            placeholder="How did it feel?" />
+        </Field>
+
+        {/* Strava link */}
+        <Field label="STRAVA LINK" style={{ marginBottom: 20 }}>
+          <input
+            type="url"
+            value={stravaUrl}
+            onChange={(e) => setStravaUrl(e.target.value)}
+            style={inputStyle}
+            placeholder="https://www.strava.com/activities/..."
+            inputMode="url"
+            autoCapitalize="none"
           />
-        </label>
+        </Field>
 
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onClose} style={secondaryBtn}>Cancel</button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !dist || !dur}
-            style={{
-              ...primaryBtn,
-              opacity: saving || !dist || !dur ? 0.5 : 1,
-            }}
-          >
+          <button onClick={handleSave} disabled={saving || !dist || !dur}
+            style={{ ...primaryBtn, opacity: saving || !dist || !dur ? 0.5 : 1 }}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function Field({ label, children, style }: {
+  label: string;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, ...style }}>
+      <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{label}</span>
+      {children}
+    </label>
   );
 }
 

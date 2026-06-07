@@ -25,8 +25,13 @@ export interface Actual {
   durationMin: number;
   avgPacePerKm?: string;
   avgHr?: number;
+  // HR logged per quality zone (e.g. { MP: 172 }) — more accurate than overall avgHr
+  segmentHr?: Partial<Record<ZoneKey, number>>;
+  // Pace logged per quality zone (e.g. { MP: "4:18" }) — actual pace during the blocks
+  segmentPace?: Partial<Record<ZoneKey, string>>;
   rpe?: number;
   notes?: string;
+  stravaUrl?: string;
   targetSnapshot: Partial<Record<ZoneKey, string>>;
 }
 

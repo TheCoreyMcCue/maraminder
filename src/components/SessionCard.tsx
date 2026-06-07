@@ -144,6 +144,26 @@ export default function SessionCard({
                 {session.actual.notes}
               </div>
             )}
+            {session.actual.stravaUrl && (
+              <a
+                href={session.actual.stravaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: "#fc4c02",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                <StravaIcon /> View on Strava
+              </a>
+            )}
           </div>
         )}
 
@@ -219,6 +239,14 @@ function Btn({ onClick, disabled, muted, children }: {
     >
       {children}
     </button>
+  );
+}
+
+function StravaIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="#fc4c02">
+      <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
+    </svg>
   );
 }
 

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/",        label: "Week",     icon: CalIcon },
   { href: "/overview",label: "Overview", icon: GridIcon },
+  { href: "/journal", label: "Journal",  icon: BookIcon },
   { href: "/zones",   label: "Zones",    icon: ZapIcon },
   { href: "/trends",  label: "Trends",   icon: TrendIcon },
 ];
@@ -99,6 +100,15 @@ function GridIcon({ size }: { size: number }) {
       <rect x="14" y="3" width="7" height="7" />
       <rect x="3" y="14" width="7" height="7" />
       <rect x="14" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+
+function BookIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
     </svg>
   );
 }
