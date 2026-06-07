@@ -20,6 +20,14 @@ const ZONE_COLORS: Record<ZoneKey, string> = {
   I: "var(--cat-vo2)",
 };
 
+const ZONE_DESC: Record<ZoneKey, string> = {
+  E: "Most of your running. True easy — conversational.",
+  S: "Moderate aerobic; long-run finishes, steady state.",
+  MP: "Goal race pace. Should feel aerobic, controlled.",
+  T: "Cruise intervals, tempo. Comfortably hard.",
+  I: "Short reps only, by feel. Lowest priority.",
+};
+
 export default function ZonesClient({ currentZones, allZones, currentWeekNo }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -31,10 +39,7 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo }: P
   const [saving, setSaving] = useState(false);
 
   function updateZoneField(key: ZoneKey, field: keyof Zone, value: string | number | undefined) {
-    setDraft((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], [field]: value },
-    }));
+    setDraft((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
   }
 
   async function handleSave() {
@@ -47,26 +52,30 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo }: P
   }
 
   return (
-    <div style={{ padding: "24px", maxWidth: 800, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+    <div className="main-content" style={{ padding: "16px 16px 0", maxWidth: 700, margin: "0 auto" }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Pace Zones</h1>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            v{currentZones.version} · {currentZones.source} · effective from W{currentZones.effectiveWeek}
+          <h1 style={{ fontSize: 20, fontWeight: 700 }}>Pace Zones</h1>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            v{currentZones.version} · {currentZones.source} · from W{currentZones.effectiveWeek}
           </div>
         </div>
         {!editing && (
           <button
             onClick={() => setEditing(true)}
             style={{
-              padding: "8px 16px",
-              borderRadius: 6,
+              flexShrink: 0,
+              padding: "8px 14px",
+              borderRadius: 8,
               border: "none",
               background: "var(--accent)",
               color: "#fff",
               fontWeight: 600,
               fontSize: 13,
               cursor: "pointer",
+              minHeight: 36,
             }}
           >
             Recalibrate
@@ -74,98 +83,62 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo }: P
         )}
       </div>
 
-      {/* Current zones table */}
-      <div style={{ marginBottom: 32 }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "50px 1fr 140px 160px 1fr",
-          gap: 12,
-          padding: "8px 16px",
-          fontSize: 11,
-          fontWeight: 600,
-          color: "var(--text-muted)",
-          letterSpacing: "0.05em",
-          borderBottom: "1px solid var(--border)",
-          marginBottom: 8,
-        }}>
-          <span>ZONE</span>
-          <span>LABEL</span>
-          <span>PACE</span>
-          <span>HR</span>
-          <span>USE</span>
-        </div>
+      {/* Zone cards */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
         {ZONE_KEYS.map((key) => {
           const zone = currentZones.zones[key];
           const draftZone = draft[key];
           const color = ZONE_COLORS[key];
           return (
             <div key={key} style={{
-              display: "grid",
-              gridTemplateColumns: "50px 1fr 140px 160px 1fr",
-              gap: 12,
-              padding: "12px 16px",
               background: "var(--surface)",
-              border: `1px solid var(--border)`,
+              border: "1px solid var(--border)",
               borderLeft: `3px solid ${color}`,
-              borderRadius: 8,
-              marginBottom: 6,
-              alignItems: "start",
+              borderRadius: 10,
+              padding: "14px 16px",
             }}>
-              <span style={{ fontWeight: 800, fontSize: 15, color }}>{key}</span>
-              <span style={{ fontWeight: 600 }}>{zone.label}</span>
-              <span style={{ fontFamily: "monospace", fontSize: 13 }}>
-                {editing ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {key === "MP" ? (
-                      <input
-                        style={miniInput}
-                        value={draftZone.pace ?? ""}
-                        onChange={(e) => updateZoneField(key, "pace", e.target.value)}
-                        placeholder="4:16"
-                      />
-                    ) : (
-                      <>
-                        <input style={miniInput} value={draftZone.paceLow ?? ""} onChange={(e) => updateZoneField(key, "paceLow", e.target.value)} placeholder="low" />
-                        <input style={miniInput} value={draftZone.paceHigh ?? ""} onChange={(e) => updateZoneField(key, "paceHigh", e.target.value)} placeholder="high" />
-                      </>
-                    )}
-                  </div>
-                ) : formatPaceRange(zone)}
-              </span>
-              <span style={{ fontSize: 13 }}>
-                {editing ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {key === "E" && <input style={miniInput} value={draftZone.hrMax ?? ""} onChange={(e) => updateZoneField(key, "hrMax", e.target.value ? parseInt(e.target.value) : undefined)} placeholder="max HR" />}
-                    {key === "I" && <input style={miniInput} value={draftZone.hrMin ?? ""} onChange={(e) => updateZoneField(key, "hrMin", e.target.value ? parseInt(e.target.value) : undefined)} placeholder="min HR" />}
-                    {(key === "S" || key === "MP" || key === "T") && (
-                      <>
-                        <input style={miniInput} value={draftZone.hrLow ?? ""} onChange={(e) => updateZoneField(key, "hrLow", e.target.value ? parseInt(e.target.value) : undefined)} placeholder="low" />
-                        <input style={miniInput} value={draftZone.hrHigh ?? ""} onChange={(e) => updateZoneField(key, "hrHigh", e.target.value ? parseInt(e.target.value) : undefined)} placeholder="high" />
-                      </>
-                    )}
-                  </div>
-                ) : formatHrRange(zone)}
-              </span>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {zoneDescription(key)}
-              </span>
+              {/* Top row: letter + label + pace + HR */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+                <span style={{ fontWeight: 800, fontSize: 18, color, minWidth: 24 }}>{key}</span>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{zone.label}</span>
+                <span style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  {editing ? (
+                    <PaceInputs zoneKey={key} draftZone={draftZone} updateZoneField={updateZoneField} />
+                  ) : (
+                    <span style={{ fontFamily: "monospace", fontSize: 13, color: "var(--text)" }}>
+                      {formatPaceRange(zone)}
+                    </span>
+                  )}
+                  {editing ? (
+                    <HrInputs zoneKey={key} draftZone={draftZone} updateZoneField={updateZoneField} />
+                  ) : (
+                    <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                      {formatHrRange(zone)}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {/* Description */}
+              <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                {ZONE_DESC[key]}
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* Edit controls */}
+      {/* Recalibrate form */}
       {editing && (
         <div style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: 20,
+          borderRadius: 10,
+          padding: 18,
           marginBottom: 24,
         }}>
-          <div style={{ fontWeight: 600, marginBottom: 16 }}>Recalibration details</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 12, marginBottom: 16 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14 }}>Save new version</div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+            <label style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>SOURCE NOTE *</span>
               <input
                 style={inputStyle}
@@ -174,25 +147,33 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo }: P
                 placeholder="e.g. W5 checkpoint, Sep 27 half"
               />
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ width: 90, display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>EFF. WEEK</span>
               <input
                 type="number"
                 style={inputStyle}
                 value={effectiveWeek}
                 onChange={(e) => setEffectiveWeek(parseInt(e.target.value))}
-                min={1}
-                max={13}
+                min={1} max={13}
               />
             </label>
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
-            All future planned sessions will re-price with these zones. Logged sessions keep their original snapshot.
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
+            Future planned sessions re-price automatically. Logged sessions keep their snapshot.
           </p>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { setEditing(false); setDraft(JSON.parse(JSON.stringify(currentZones.zones))); }} style={secondaryBtn}>Cancel</button>
-            <button onClick={handleSave} disabled={saving || !source.trim()} style={{ ...primaryBtn, opacity: saving || !source.trim() ? 0.5 : 1 }}>
-              {saving ? "Saving…" : "Save new version"}
+            <button
+              onClick={() => { setEditing(false); setDraft(JSON.parse(JSON.stringify(currentZones.zones))); }}
+              style={secondaryBtn}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !source.trim()}
+              style={{ ...primaryBtn, opacity: saving || !source.trim() ? 0.5 : 1 }}
+            >
+              {saving ? "Saving…" : "Save version"}
             </button>
           </div>
         </div>
@@ -200,29 +181,32 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo }: P
 
       {/* Zone history */}
       {allZones.length > 1 && (
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, color: "var(--text-muted)" }}>
-            Zone history
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text-muted)", marginBottom: 10, letterSpacing: "0.04em" }}>
+            HISTORY
           </div>
           {[...allZones].reverse().map((z) => (
             <div key={z.version} style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
               borderRadius: 8,
-              padding: "10px 16px",
+              padding: "10px 14px",
               marginBottom: 6,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              gap: 8,
             }}>
-              <div>
-                <span style={{ fontWeight: 600 }}>v{z.version}</span>
-                <span style={{ marginLeft: 12, fontSize: 13, color: "var(--text-muted)" }}>{z.source}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <span style={{ fontWeight: 700, flexShrink: 0 }}>v{z.version}</span>
+                <span style={{ fontSize: 13, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {z.source}
+                </span>
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Effective W{z.effectiveWeek}
+              <div style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                W{z.effectiveWeek}
                 {z.version === currentZones.version && (
-                  <span style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600 }}>current</span>
+                  <span style={{ color: "var(--accent)", fontWeight: 600 }}>current</span>
                 )}
               </div>
             </div>
@@ -233,34 +217,75 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo }: P
   );
 }
 
-function zoneDescription(key: ZoneKey): string {
-  const desc: Record<ZoneKey, string> = {
-    E: "Most of your running. True easy — conversational.",
-    S: "Moderate aerobic; long-run finishes, steady state.",
-    MP: "Goal race pace. Should feel aerobic, controlled.",
-    T: "Cruise intervals, tempo. Comfortably hard.",
-    I: "Short reps only, by feel. Lowest priority.",
-  };
-  return desc[key];
+// ── Inline edit sub-components ────────────────────────────
+
+function PaceInputs({ zoneKey, draftZone, updateZoneField }: {
+  zoneKey: ZoneKey;
+  draftZone: Zone;
+  updateZoneField: (k: ZoneKey, f: keyof Zone, v: string | number | undefined) => void;
+}) {
+  if (zoneKey === "MP") {
+    return (
+      <input style={miniInput} value={draftZone.pace ?? ""} placeholder="4:16"
+        onChange={(e) => updateZoneField(zoneKey, "pace", e.target.value)} />
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      <input style={{ ...miniInput, width: 54 }} value={draftZone.paceLow ?? ""} placeholder="low"
+        onChange={(e) => updateZoneField(zoneKey, "paceLow", e.target.value)} />
+      <input style={{ ...miniInput, width: 54 }} value={draftZone.paceHigh ?? ""} placeholder="high"
+        onChange={(e) => updateZoneField(zoneKey, "paceHigh", e.target.value)} />
+    </div>
+  );
 }
+
+function HrInputs({ zoneKey, draftZone, updateZoneField }: {
+  zoneKey: ZoneKey;
+  draftZone: Zone;
+  updateZoneField: (k: ZoneKey, f: keyof Zone, v: string | number | undefined) => void;
+}) {
+  if (zoneKey === "E") {
+    return (
+      <input style={{ ...miniInput, width: 60 }} value={draftZone.hrMax ?? ""} placeholder="max"
+        onChange={(e) => updateZoneField(zoneKey, "hrMax", e.target.value ? parseInt(e.target.value) : undefined)} />
+    );
+  }
+  if (zoneKey === "I") {
+    return (
+      <input style={{ ...miniInput, width: 60 }} value={draftZone.hrMin ?? ""} placeholder="min"
+        onChange={(e) => updateZoneField(zoneKey, "hrMin", e.target.value ? parseInt(e.target.value) : undefined)} />
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      <input style={{ ...miniInput, width: 50 }} value={draftZone.hrLow ?? ""} placeholder="low"
+        onChange={(e) => updateZoneField(zoneKey, "hrLow", e.target.value ? parseInt(e.target.value) : undefined)} />
+      <input style={{ ...miniInput, width: 50 }} value={draftZone.hrHigh ?? ""} placeholder="high"
+        onChange={(e) => updateZoneField(zoneKey, "hrHigh", e.target.value ? parseInt(e.target.value) : undefined)} />
+    </div>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────
 
 const miniInput: React.CSSProperties = {
   background: "var(--surface-2)",
   border: "1px solid var(--border)",
-  borderRadius: 4,
+  borderRadius: 5,
   padding: "4px 6px",
   color: "var(--text)",
   fontSize: 12,
-  width: "100%",
   outline: "none",
   fontFamily: "monospace",
+  width: 64,
 };
 
 const inputStyle: React.CSSProperties = {
   background: "var(--surface-2)",
   border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "8px 10px",
+  borderRadius: 7,
+  padding: "9px 11px",
   color: "var(--text)",
   fontSize: 14,
   outline: "none",
@@ -268,8 +293,10 @@ const inputStyle: React.CSSProperties = {
 };
 
 const primaryBtn: React.CSSProperties = {
-  padding: "8px 16px",
-  borderRadius: 6,
+  flex: 1,
+  minHeight: 40,
+  padding: "0 16px",
+  borderRadius: 8,
   border: "none",
   background: "var(--accent)",
   color: "#fff",
@@ -279,8 +306,9 @@ const primaryBtn: React.CSSProperties = {
 };
 
 const secondaryBtn: React.CSSProperties = {
-  padding: "8px 16px",
-  borderRadius: 6,
+  minHeight: 40,
+  padding: "0 14px",
+  borderRadius: 8,
   border: "1px solid var(--border)",
   background: "transparent",
   color: "var(--text-muted)",
