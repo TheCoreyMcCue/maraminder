@@ -1,5 +1,5 @@
 "use client";
-import { useState, useOptimistic, startTransition } from "react";
+import { useState, useOptimistic, startTransition, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -44,6 +44,17 @@ function dateToDow(iso: string) {
 export default function WeekView({ week, sessions, zones, allWeeks, meta }: Props) {
   const router = useRouter();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const navScrollRef = useRef<HTMLDivElement>(null);
+  const activeNavRef = useRef<HTMLAnchorElement>(null);
+
+  // Keep the active week pill centered in the nav strip
+  useEffect(() => {
+    const container = navScrollRef.current;
+    const active = activeNavRef.current;
+    if (!container || !active) return;
+    const offset = active.offsetLeft - container.offsetWidth / 2 + active.offsetWidth / 2;
+    container.scrollTo({ left: offset, behavior: "smooth" });
+  }, [week.weekNo]);
   const [postMoveWarnings, setPostMoveWarnings] = useState<Warning[]>([]);
 
   // Optimistic session positions — reverts automatically after router.refresh()
@@ -147,7 +158,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta }: Prop
         )}
 
         {/* Week nav strip */}
-        <div style={{
+        <div ref={navScrollRef} style={{
           display: "flex", gap: 5, overflowX: "auto", paddingBottom: 10,
           marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16,
           scrollbarWidth: "none",
@@ -155,7 +166,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta }: Prop
           {allWeeks.map((w) => {
             const active = w.weekNo === week.weekNo;
             return (
-              <Link key={w.weekNo} href={w.weekNo === 1 ? "/" : `/week/${w.weekNo}`} style={{ flexShrink: 0 }}>
+              <Link key={w.weekNo} ref={active ? activeNavRef : undefined} href={w.weekNo === 1 ? "/" : `/week/${w.weekNo}`} style={{ flexShrink: 0 }}>
                 <div style={{
                   padding: "4px 10px", borderRadius: 6, fontSize: 12,
                   fontWeight: active ? 700 : 400,
