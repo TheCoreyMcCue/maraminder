@@ -29,7 +29,14 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
   const [rpe, setRpe] = useState(existing?.rpe?.toString() ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [stravaUrl, setStravaUrl] = useState(existing?.stravaUrl ?? "");
+  const [tempC, setTempC] = useState(existing?.tempC?.toString() ?? "");
+  const [wind, setWind] = useState(existing?.wind ?? "");
+  const [dcHr1, setDcHr1] = useState(existing?.decoupling?.firstHalfHr?.toString() ?? "");
+  const [dcHr2, setDcHr2] = useState(existing?.decoupling?.secondHalfHr?.toString() ?? "");
+  const [dcPace, setDcPace] = useState(existing?.decoupling?.paceHeldKm ?? "");
   const [saving, setSaving] = useState(false);
+
+  const showDecoupling = ["long", "mp"].includes(session.category);
 
   // Per-zone HR state — only for quality zones present in this session
   const sessionQualityZones = session.zoneRefs.filter((z): z is ZoneKey =>
@@ -74,6 +81,13 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
       rpe: rpe ? parseInt(rpe) : undefined,
       notes: notes || undefined,
       stravaUrl: stravaUrl.trim() || undefined,
+      tempC: tempC ? parseFloat(tempC) : undefined,
+      wind: wind.trim() || undefined,
+      decoupling: (dcHr1 || dcHr2 || dcPace) ? {
+        firstHalfHr: dcHr1 ? parseInt(dcHr1) : undefined,
+        secondHalfHr: dcHr2 ? parseInt(dcHr2) : undefined,
+        paceHeldKm: dcPace.trim() || undefined,
+      } : undefined,
     };
 
     await logActual(session.sk, actual);
@@ -163,6 +177,47 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
               style={inputStyle} placeholder="—" />
           </Field>
         </div>
+
+        {/* Conditions */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+          <Field label="TEMP (°C)">
+            <input type="number" step="0.5" value={tempC} onChange={(e) => setTempC(e.target.value)}
+              style={inputStyle} placeholder="—" />
+          </Field>
+          <Field label="WIND">
+            <input type="text" value={wind} onChange={(e) => setWind(e.target.value)}
+              style={inputStyle} placeholder="calm / light / strong" />
+          </Field>
+        </div>
+
+        {/* Cardiac decoupling — long runs + MP sessions only */}
+        {showDecoupling && (
+          <div style={{
+            background: "var(--surface-2)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: "12px 14px", marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: 10 }}>
+              CARDIAC DECOUPLING
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <Field label="1ST HALF HR">
+                <input type="number" value={dcHr1} onChange={(e) => setDcHr1(e.target.value)}
+                  style={inputStyle} placeholder="168" />
+              </Field>
+              <Field label="2ND HALF HR">
+                <input type="number" value={dcHr2} onChange={(e) => setDcHr2(e.target.value)}
+                  style={inputStyle} placeholder="175" />
+              </Field>
+              <Field label="PACE HELD">
+                <input type="text" value={dcPace} onChange={(e) => setDcPace(e.target.value)}
+                  style={inputStyle} placeholder="4:16" />
+              </Field>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+              Durability signal — HR drift at constant pace.
+            </div>
+          </div>
+        )}
 
         {/* Notes */}
         <Field label="NOTES" style={{ marginBottom: 12 }}>

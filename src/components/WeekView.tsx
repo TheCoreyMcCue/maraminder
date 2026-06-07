@@ -19,6 +19,8 @@ import { evaluateWeek } from "@/lib/rules";
 import { moveSession } from "@/lib/planOps";
 import SessionCard from "./SessionCard";
 import CategoryPill from "./CategoryPill";
+import RecoveryStrip from "./RecoveryStrip";
+import type { DailyRecovery } from "@/lib/types";
 
 interface Props {
   week: Week;
@@ -26,6 +28,8 @@ interface Props {
   zones: ZoneSet;
   allWeeks: Week[];
   meta: PlanMeta;
+  recoveryDays?: DailyRecovery[];
+  today?: string;
 }
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -41,17 +45,17 @@ function dateToDow(iso: string) {
   return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(iso + "T12:00:00").getDay()];
 }
 
-export default function WeekView({ week, sessions, zones, allWeeks, meta }: Props) {
+export default function WeekView({ week, sessions, zones, allWeeks, meta, recoveryDays, today: todayProp }: Props) {
   const router = useRouter();
   const [activeId, setActiveId] = useState<string | null>(null);
-  // today is empty string during SSR to avoid hydration mismatch
-  const [today, setToday] = useState("");
+  // Use server-provided today to avoid hydration mismatch
+  const [today, setToday] = useState(todayProp ?? "");
   const navScrollRef = useRef<HTMLDivElement>(null);
   const activeNavRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
-    setToday(new Date().toISOString().slice(0, 10));
-  }, []);
+    if (!todayProp) setToday(new Date().toISOString().slice(0, 10));
+  }, [todayProp]);
 
   // Keep the active week pill centered in the nav strip
   useEffect(() => {
@@ -200,6 +204,16 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta }: Prop
           </div>
         )}
       </div>
+
+      {/* ── Recovery strip ── */}
+      {recoveryDays && recoveryDays.length > 0 && (
+        <div style={{ padding: "0 16px 12px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: 8 }}>
+            RECOVERY
+          </div>
+          <RecoveryStrip days={recoveryDays} today={today} />
+        </div>
+      )}
 
       {/* ── Day grid with DnD ── */}
       <DndContext id="week-board" sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>

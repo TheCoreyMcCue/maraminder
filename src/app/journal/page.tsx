@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic";
 import { getPlan } from "@/lib/planOps";
-import type { Session, Week } from "@/lib/types";
+import { getRecoveryWithHistory } from "@/lib/recoveryOps";
+import { enrichDay, STATUS_COLOR, fmtDevPct, devColor } from "@/lib/recovery";
+import type { Session, Week, DailyRecovery } from "@/lib/types";
 
 const MONTHS = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
@@ -23,6 +25,17 @@ export default async function JournalPage() {
     .sort((a, b) => b.date.localeCompare(a.date)); // newest first
 
   const weekMap = Object.fromEntries(plan.weeks.map((w) => [w.weekNo, w]));
+
+  // Fetch recovery with history for baseline computation
+  const allRecovery = logged.length > 0
+    ? await getRecoveryWithHistory(logged[logged.length - 1].date)
+    : [];
+
+  // Pre-enrich each unique date that has a logged session
+  const uniqueDates = [...new Set(logged.map((s) => s.date))];
+  const recoveryByDate = Object.fromEntries(
+    uniqueDates.map((date) => [date, enrichDay(allRecovery, date)])
+  );
 
   // Group by week
   const byWeek: Map<number, Session[]> = new Map();
@@ -57,7 +70,7 @@ export default async function JournalPage() {
           const week = weekMap[weekNo];
           const sessions = byWeek.get(weekNo)!;
           return (
-            <WeekGroup key={weekNo} week={week} sessions={sessions} />
+            <WeekGroup key={weekNo} week={week} sessions={sessions} recoveryByDate={recoveryByDate} />
           );
         })
       )}
@@ -65,7 +78,11 @@ export default async function JournalPage() {
   );
 }
 
-function WeekGroup({ week, sessions }: { week: Week; sessions: Session[] }) {
+function WeekGroup({ week, sessions, recoveryByDate }: {
+  week: Week;
+  sessions: Session[];
+  recoveryByDate: Record<string, DailyRecovery>;
+}) {
   const totalKm = sessions.reduce((s, r) => s + (r.actual?.distanceKm || 0), 0);
 
   return (
@@ -88,14 +105,14 @@ function WeekGroup({ week, sessions }: { week: Week; sessions: Session[] }) {
       {/* Entries */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {sessions.map((s) => (
-          <JournalEntry key={s.sk} session={s} />
+          <JournalEntry key={s.sk} session={s} recovery={recoveryByDate[s.date] ?? null} />
         ))}
       </div>
     </div>
   );
 }
 
-function JournalEntry({ session }: { session: Session }) {
+function JournalEntry({ session, recovery }: { session: Session; recovery: DailyRecovery | null }) {
   const a = session.actual!;
   const d = new Date(session.date + "T12:00:00");
   const color = CAT_COLORS[session.category] ?? "var(--text-muted)";
@@ -161,6 +178,49 @@ function JournalEntry({ session }: { session: Session }) {
           )}
         </div>
       </div>
+
+      {/* Recovery context */}
+      {recovery?.reading && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "6px 14px 8px",
+          borderTop: "1px solid var(--border)",
+          fontSize: 12,
+        }}>
+          {/* Status dot */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: STATUS_COLOR[recovery.status],
+              flexShrink: 0,
+            }} />
+            <span style={{ color: STATUS_COLOR[recovery.status], fontWeight: 600 }}>
+              {{ green: "Recovered", amber: "Moderate", red: "Fatigued", unknown: "—" }[recovery.status]}
+            </span>
+          </div>
+          {recovery.hrv7d && recovery.reading.hrvMs && (
+            <span style={{ color: devColor(recovery.hrv7d, true) }}>
+              HRV {recovery.reading.hrvMs}ms ({fmtDevPct(recovery.hrv7d, true)} vs 7d)
+            </span>
+          )}
+          {recovery.reading.rhrBpm && (
+            <span style={{ color: recovery.rhr7d ? devColor(recovery.rhr7d, false) : "var(--text-muted)" }}>
+              RHR {recovery.reading.rhrBpm}bpm
+              {recovery.rhr7d && ` (${fmtDevPct(recovery.rhr7d, false)} vs 7d)`}
+            </span>
+          )}
+          {recovery.reading.sleepHours && (
+            <span style={{ color: recovery.sleepOk ? "var(--text-muted)" : "#f59e0b" }}>
+              Sleep {recovery.reading.sleepHours.toFixed(1)}h
+            </span>
+          )}
+          {recovery.reading.note && (
+            <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+              "{recovery.reading.note}"
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Notes — the journal entry body */}
       {a.notes && (

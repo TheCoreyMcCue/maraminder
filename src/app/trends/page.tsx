@@ -1,10 +1,25 @@
 export const dynamic = "force-dynamic";
 import { getTrends, getPlan } from "@/lib/planOps";
+import { getRecoveryWithHistory } from "@/lib/recoveryOps";
+import { weeklyRecovery } from "@/lib/recovery";
 import MPHrChart from "./MPHrChart";
+import RecoveryVsLoad from "./RecoveryVsLoad";
 
 export default async function TrendsPage() {
-  const [trends, plan] = await Promise.all([getTrends(), getPlan()]);
+  const [trends, plan, allRecovery] = await Promise.all([
+    getTrends(),
+    getPlan(),
+    getRecoveryWithHistory("2026-07-20"),
+  ]);
   const mpZone = plan.currentZones.zones.MP;
+
+  // Build recovery + load data per week
+  const recoveryWeeks = plan.weeks.map((w) => ({
+    weekNo: w.weekNo,
+    targetKm: w.volumeTargetKm,
+    actualKm: trends.weeklyVolume.find((v) => v.weekNo === w.weekNo)?.actualKm ?? 0,
+    recovery: weeklyRecovery(allRecovery, w.dateStart),
+  }));
   const mpTargetLow = mpZone.hrLow ?? 168;
   const mpTargetHigh = mpZone.hrHigh ?? 176;
 
@@ -30,6 +45,11 @@ export default async function TrendsPage() {
             )}
           </>
         )}
+      </Section>
+
+      {/* Recovery vs Load */}
+      <Section title="Recovery vs Load">
+        <RecoveryVsLoad weeks={recoveryWeeks} />
       </Section>
 
       {/* Weekly volume */}

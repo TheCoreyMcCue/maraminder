@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 import { getPlan } from "@/lib/planOps";
+import { getRecoveryWithHistory } from "@/lib/recoveryOps";
+import { enrichDay } from "@/lib/recovery";
 import WeekView from "@/components/WeekView";
 
 export default async function Home() {
@@ -31,6 +33,16 @@ export default async function Home() {
     .filter((s) => s.weekNo === currentWeek.weekNo)
     .sort((a, b) => a.order - b.order);
 
+  // Fetch recovery with 90-day history for baseline computation
+  const allRecovery = await getRecoveryWithHistory(currentWeek.dateStart);
+
+  // Enrich each day of the week
+  const recoveryDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(currentWeek.dateStart + "T12:00:00");
+    d.setDate(d.getDate() + i);
+    return enrichDay(allRecovery, d.toISOString().slice(0, 10));
+  });
+
   return (
     <WeekView
       week={currentWeek}
@@ -38,6 +50,8 @@ export default async function Home() {
       zones={plan.currentZones}
       allWeeks={plan.weeks}
       meta={plan.meta}
+      recoveryDays={recoveryDays}
+      today={today}
     />
   );
 }

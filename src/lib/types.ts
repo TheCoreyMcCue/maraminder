@@ -32,6 +32,15 @@ export interface Actual {
   rpe?: number;
   notes?: string;
   stravaUrl?: string;
+  // Conditions
+  tempC?: number;
+  wind?: string;
+  // Cardiac decoupling (long runs / MP blocks) — the durability signal
+  decoupling?: {
+    firstHalfHr?: number;
+    secondHalfHr?: number;
+    paceHeldKm?: string;
+  };
   targetSnapshot: Partial<Record<ZoneKey, string>>;
 }
 
@@ -95,6 +104,51 @@ export interface Warning {
   message: string;
   severity: "warn" | "info";
   sessionIds?: string[];
+}
+
+// ── Recovery ──────────────────────────────────────────────
+
+export interface RecoveryReading {
+  pk: string;
+  sk: string; // RECOVERY#YYYY-MM-DD
+  date: string;
+  hrvMs?: number;
+  rhrBpm?: number;
+  sleepHours?: number;
+  sleepScore?: number;
+  readiness?: number;
+  source: "shortcuts" | "manual" | "export-tool";
+  note?: string;
+}
+
+export type RecoveryStatus = "green" | "amber" | "red" | "unknown";
+
+export interface Baseline {
+  mean: number;
+  sd: number;
+  n: number;
+}
+
+export interface Deviation {
+  pct: number;  // % deviation from mean (negative = worse for HRV, positive = worse for RHR)
+  z: number;    // z-score
+}
+
+export interface DailyRecovery {
+  date: string;
+  reading: RecoveryReading | null;
+  status: RecoveryStatus;
+  hrv7d: Deviation | null;
+  hrv30d: Deviation | null;
+  rhr7d: Deviation | null;
+  sleepOk: boolean | null;
+}
+
+export interface WeeklyRecovery {
+  avgHrvDevPct: number | null;
+  avgRhr: number | null;
+  avgSleep: number | null;
+  status: RecoveryStatus;
 }
 
 export interface PlanData {
