@@ -44,8 +44,14 @@ function dateToDow(iso: string) {
 export default function WeekView({ week, sessions, zones, allWeeks, meta }: Props) {
   const router = useRouter();
   const [activeId, setActiveId] = useState<string | null>(null);
+  // today is empty string during SSR to avoid hydration mismatch
+  const [today, setToday] = useState("");
   const navScrollRef = useRef<HTMLDivElement>(null);
   const activeNavRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    setToday(new Date().toISOString().slice(0, 10));
+  }, []);
 
   // Keep the active week pill centered in the nav strip
   useEffect(() => {
@@ -115,7 +121,9 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta }: Prop
     .reduce((sum, s) => sum + (s.targetDistanceKm || 0), 0);
   const doneCount = optimisticSessions.filter((s) => s.status === "done").length;
   const totalCount = optimisticSessions.filter((s) => s.status !== "skipped").length;
-  const daysToRace = Math.ceil((new Date(meta.raceDate).getTime() - Date.now()) / 86_400_000);
+  const daysToRace = today
+    ? Math.ceil((new Date(meta.raceDate).getTime() - new Date(today).getTime()) / 86_400_000)
+    : null;
 
   const activeSession = activeId ? optimisticSessions.find((s) => s.sk === activeId) : null;
 
@@ -146,7 +154,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta }: Prop
           <div style={{ display: "flex", gap: 8 }}>
             <StatChip label="Volume" value={`${actualKm > 0 ? actualKm.toFixed(1) : plannedKm.toFixed(0)}/${week.volumeTargetKm}km`} />
             <StatChip label="Done" value={`${doneCount}/${totalCount}`} />
-            {daysToRace > 0 && <StatChip label="Race" value={`${daysToRace}d`} color="#f97316" />}
+            {daysToRace !== null && daysToRace > 0 && <StatChip label="Race" value={`${daysToRace}d`} color="#f97316" />}
           </div>
         </div>
 
@@ -194,11 +202,11 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta }: Prop
       </div>
 
       {/* ── Day grid with DnD ── */}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext id="week-board" sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="week-grid" style={{ padding: "0 0" }}>
           {weekDates.map(({ date, dow, sessions: daySessions }) => {
             const dateObj = new Date(date + "T12:00:00");
-            const isToday = date === new Date().toISOString().slice(0, 10);
+            const isToday = today !== "" && date === today;
             const sorted = [...daySessions].sort((a, b) => a.order - b.order);
 
             return (
