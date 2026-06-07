@@ -319,15 +319,14 @@ function DraggableCard({ session, children }: { session: Session; children: Reac
   }>;
 
   return (
-    <div ref={setNodeRef} style={{ opacity: isDragging ? 0.15 : 1, transition: "opacity 0.1s" }}>
-      {isDragging ? null : (
-        // Pass drag handle listeners only — buttons inside handle their own events
-        <child.type
-          {...child.props}
-          dragListeners={listeners as unknown as Record<string, unknown>}
-          dragAttributes={attributes as unknown as Record<string, unknown>}
-        />
-      )}
+    // Keep card rendered (not null) while dragging so the source column keeps its height.
+    // opacity:0 hides it visually while the DragOverlay ghost floats above.
+    <div ref={setNodeRef} style={{ opacity: isDragging ? 0 : 1, transition: "opacity 0.1s" }}>
+      <child.type
+        {...child.props}
+        dragListeners={listeners as unknown as Record<string, unknown>}
+        dragAttributes={attributes as unknown as Record<string, unknown>}
+      />
     </div>
   );
 }

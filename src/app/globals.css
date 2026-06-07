@@ -104,7 +104,8 @@ a { color: inherit; text-decoration: none; }
     border-top: none;
     padding: 0;
     border-radius: 8px;
-    /* highlight on drag-over handled by .day-col--over */
+    /* Minimum height keeps the column droppable even when empty or the dragged card is invisible */
+    min-height: 120px;
   }
 }
 
