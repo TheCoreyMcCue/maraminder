@@ -51,11 +51,23 @@ function fmtDate(iso: string) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
-export default function MPHrChart({ data, targetLow, targetHigh }: {
+interface MPHrChartProps {
   data: ChartPoint[];
   targetLow: number;
   targetHigh: number;
-}) {
+  hrColor?: string;
+  hrTrendColor?: string;
+  zoneLabel?: string;
+}
+
+export default function MPHrChart({
+  data,
+  targetLow,
+  targetHigh,
+  hrColor = "#3b82f6",
+  hrTrendColor = "#6366f1",
+  zoneLabel = "MP",
+}: MPHrChartProps) {
   const [visible, setVisible] = useState<Set<SeriesKey>>(new Set(ALL_SERIES));
 
   function toggle(key: SeriesKey) {
@@ -118,21 +130,24 @@ export default function MPHrChart({ data, targetLow, targetHigh }: {
   const paceTicks: number[] = [];
   for (let s = paceSecMin; s <= paceSecMax; s += 10) paceTicks.push(s);
 
+  // Unique gradient ID per instance so two charts on the same page don't clash
+  const gradId = `hrGrad-${zoneLabel.replace(/\s+/g, "")}`;
+
   // ── Render ────────────────────────────────────────────────
   return (
     <div>
       <svg viewBox={`0 0 ${VW} ${VH}`} style={{ width: "100%", height: "auto", display: "block" }}>
         <defs>
-          <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.01" />
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={hrColor} stopOpacity="0.15" />
+            <stop offset="100%" stopColor={hrColor} stopOpacity="0.01" />
           </linearGradient>
         </defs>
 
         {/* Target zone band */}
         <rect x={PAD.left} y={yhr(targetHigh)} width={CW}
           height={yhr(targetLow) - yhr(targetHigh)}
-          fill="#3b82f612" stroke="#3b82f628" strokeWidth={0.5} />
+          fill={hrColor + "12"} stroke={hrColor + "28"} strokeWidth={0.5} />
 
         {/* Grid */}
         {hrTicks.map((hr) => (
@@ -146,7 +161,7 @@ export default function MPHrChart({ data, targetLow, targetHigh }: {
             dominantBaseline="middle" fill="#888896" fontSize={9}>{hr}</text>
         ))}
         <text x={10} y={PAD.top + CH / 2} textAnchor="middle"
-          fill="#3b82f6" fontSize={8} opacity={0.7}
+          fill={hrColor} fontSize={8} opacity={0.7}
           transform={`rotate(-90, 10, ${PAD.top + CH / 2})`}>bpm</text>
 
         {/* Right axis labels (pace) — always visible when pace data exists */}
@@ -165,7 +180,7 @@ export default function MPHrChart({ data, targetLow, targetHigh }: {
 
         {/* Axes */}
         <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH}
-          stroke="#3b82f650" strokeWidth={1} />
+          stroke={hrColor + "50"} strokeWidth={1} />
         <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH}
           stroke="#2e2e36" strokeWidth={1} />
         {hasPace && (
@@ -174,13 +189,13 @@ export default function MPHrChart({ data, targetLow, targetHigh }: {
         )}
 
         {/* HR series */}
-        {show("hr") && hrAreaPath && <path d={hrAreaPath} fill="url(#hrGrad)" />}
+        {show("hr") && hrAreaPath && <path d={hrAreaPath} fill={`url(#${gradId})`} />}
         {show("hrTrend") && hrTrendPath && (
-          <path d={hrTrendPath} fill="none" stroke="#6366f1" strokeWidth={1.2}
+          <path d={hrTrendPath} fill="none" stroke={hrTrendColor} strokeWidth={1.2}
             strokeDasharray="5 3" opacity={0.6} />
         )}
         {show("hr") && (
-          <path d={hrPath} fill="none" stroke="#3b82f6" strokeWidth={2}
+          <path d={hrPath} fill="none" stroke={hrColor} strokeWidth={2}
             strokeLinecap="round" strokeLinejoin="round" />
         )}
 
@@ -200,8 +215,8 @@ export default function MPHrChart({ data, targetLow, targetHigh }: {
             {show("hr") && (
               <>
                 <circle cx={xp(d.weekNo)} cy={yhr(d.avgHr)} r={4.5}
-                  fill={d.isSegment ? "#3b82f6" : "var(--surface)"}
-                  stroke="#3b82f6" strokeWidth={2} />
+                  fill={d.isSegment ? hrColor : "var(--surface)"}
+                  stroke={hrColor} strokeWidth={2} />
                 <text x={xp(d.weekNo)} y={yhr(d.avgHr) - 9} textAnchor="middle"
                   fill="#e8e8ed" fontSize={8.5} fontWeight={600}>{d.avgHr}</text>
               </>
@@ -223,15 +238,15 @@ export default function MPHrChart({ data, targetLow, targetHigh }: {
 
         {/* Target zone label */}
         <text x={PAD.left + 4} y={yhr((targetLow + targetHigh) / 2)}
-          dominantBaseline="middle" fill="#3b82f6" fontSize={7.5} opacity={0.55} fontStyle="italic">
-          MP target
+          dominantBaseline="middle" fill={hrColor} fontSize={7.5} opacity={0.55} fontStyle="italic">
+          {zoneLabel} target
         </text>
       </svg>
 
       {/* Interactive legend */}
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <LegendItem
-          label="HR" dot filled color="#3b82f6"
+          label="HR" dot filled color={hrColor}
           active={show("hr")} onClick={() => toggle("hr")}
         />
         <LegendItem
@@ -240,7 +255,7 @@ export default function MPHrChart({ data, targetLow, targetHigh }: {
           disabled={!hasPace}
         />
         <LegendItem
-          label="HR trend" dashed color="#6366f1"
+          label="HR trend" dashed color={hrTrendColor}
           active={show("hrTrend")} onClick={() => toggle("hrTrend")}
           disabled={!hrTrendPath}
         />

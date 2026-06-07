@@ -210,28 +210,39 @@ export async function updateSession(
   );
 }
 
+type ZoneHistoryPoint = { date: string; avgHr: number; pace?: string; weekNo: number; isSegment: boolean };
+
+function buildZoneHistory(
+  logged: ReturnType<typeof Array.prototype.filter>,
+  zoneKey: "MP" | "T" | "I" | "S"
+): ZoneHistoryPoint[] {
+  return (logged as typeof logged)
+    .filter((s: { zoneRefs: string[]; actual: { segmentHr?: Record<string, number>; avgHr?: number } | null }) =>
+      s.zoneRefs.includes(zoneKey) &&
+      (s.actual?.segmentHr?.[zoneKey] ?? s.actual?.avgHr)
+    )
+    .map((s: {
+      date: string; weekNo: number;
+      actual: { segmentHr?: Record<string, number>; segmentPace?: Record<string, string>; avgHr?: number; avgPacePerKm?: string } | null;
+    }) => {
+      const segHr = s.actual!.segmentHr?.[zoneKey];
+      const segPace = s.actual!.segmentPace?.[zoneKey] ?? s.actual!.avgPacePerKm;
+      return { date: s.date, avgHr: segHr ?? s.actual!.avgHr!, pace: segPace, weekNo: s.weekNo, isSegment: !!segHr };
+    })
+    .sort((a: ZoneHistoryPoint, b: ZoneHistoryPoint) => a.date.localeCompare(b.date));
+}
+
 export async function getTrends(): Promise<{
-  mpHrHistory: Array<{ date: string; avgHr: number; pace?: string; weekNo: number; isSegment: boolean }>;
+  mpHrHistory: ZoneHistoryPoint[];
+  thresholdHrHistory: ZoneHistoryPoint[];
   easyPaceHistory: Array<{ date: string; pace: string; weekNo: number }>;
   weeklyVolume: Array<{ weekNo: number; targetKm: number; actualKm: number }>;
 }> {
   const plan = await getPlan();
   const logged = plan.sessions.filter((s) => s.status === "done" && s.actual);
 
-  const mpHrHistory = logged
-    .filter((s) => s.zoneRefs.includes("MP") && (s.actual?.segmentHr?.MP ?? s.actual?.avgHr))
-    .map((s) => {
-      const segHr = s.actual!.segmentHr?.MP;
-      const segPace = s.actual!.segmentPace?.MP ?? s.actual!.avgPacePerKm;
-      return {
-        date: s.date,
-        avgHr: segHr ?? s.actual!.avgHr!,
-        pace: segPace,
-        weekNo: s.weekNo,
-        isSegment: !!segHr,
-      };
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const mpHrHistory = buildZoneHistory(logged, "MP");
+  const thresholdHrHistory = buildZoneHistory(logged, "T");
 
   const easyPaceHistory = logged
     .filter((s) => s.category === "easy" && s.actual?.avgPacePerKm)
@@ -246,5 +257,5 @@ export async function getTrends(): Promise<{
     return { weekNo: w.weekNo, targetKm: w.volumeTargetKm, actualKm };
   });
 
-  return { mpHrHistory, easyPaceHistory, weeklyVolume };
+  return { mpHrHistory, thresholdHrHistory, easyPaceHistory, weeklyVolume };
 }

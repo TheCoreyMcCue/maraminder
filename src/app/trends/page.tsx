@@ -12,6 +12,12 @@ export default async function TrendsPage() {
     getRecoveryWithHistory("2026-07-20"),
   ]);
   const mpZone = plan.currentZones.zones.MP;
+  const tZone = plan.currentZones.zones.T;
+
+  const mpTargetLow = mpZone.hrLow ?? 168;
+  const mpTargetHigh = mpZone.hrHigh ?? 176;
+  const tTargetLow = tZone.hrLow ?? 180;
+  const tTargetHigh = tZone.hrHigh ?? 187;
 
   // Build recovery + load data per week
   const recoveryWeeks = plan.weeks.map((w) => ({
@@ -20,8 +26,6 @@ export default async function TrendsPage() {
     actualKm: trends.weeklyVolume.find((v) => v.weekNo === w.weekNo)?.actualKm ?? 0,
     recovery: weeklyRecovery(allRecovery, w.dateStart),
   }));
-  const mpTargetLow = mpZone.hrLow ?? 168;
-  const mpTargetHigh = mpZone.hrHigh ?? 176;
 
   return (
     <div className="main-content" style={{ padding: "16px", maxWidth: 900, margin: "0 auto" }}>
@@ -41,6 +45,29 @@ export default async function TrendsPage() {
             {trends.mpHrHistory.some((r) => !r.isSegment) && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10 }}>
                 ◯ hollow dot = whole-run avg HR. Use "MP HR" + "MP Pace" fields when logging for accurate block data.
+              </div>
+            )}
+          </>
+        )}
+      </Section>
+
+      {/* Threshold HR + Pace chart */}
+      <Section title="Threshold Heart Rate & Pace Over Time">
+        {trends.thresholdHrHistory.length === 0 ? (
+          <EmptyState msg="Log threshold sessions and enter block HR + pace to plot here." />
+        ) : (
+          <>
+            <MPHrChart
+              data={trends.thresholdHrHistory}
+              targetLow={tTargetLow}
+              targetHigh={tTargetHigh}
+              hrColor="#f59e0b"
+              hrTrendColor="#d97706"
+              zoneLabel="Threshold"
+            />
+            {trends.thresholdHrHistory.some((r) => !r.isSegment) && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10 }}>
+                ◯ hollow dot = whole-run avg HR. Use "Threshold HR" + "Threshold Pace" fields when logging for accurate block data.
               </div>
             )}
           </>
