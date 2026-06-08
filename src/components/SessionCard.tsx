@@ -30,12 +30,12 @@ export default function SessionCard({
   const isSkipped = session.status === "skipped";
 
   async function handleSkip() {
-    await updateSessionStatus(session.sk, isSkipped ? "planned" : "skipped");
+    await updateSessionStatus(session.pk, session.sk, isSkipped ? "planned" : "skipped");
     router.refresh();
   }
 
   async function handleUnlog() {
-    await unlogSession(session.sk);
+    await unlogSession(session.pk, session.sk);
     router.refresh();
   }
 

@@ -18,7 +18,7 @@ export default function MoveModal({ session, weekDates, onClose, onMoved }: Prop
   async function handleMove(toDate: string) {
     if (toDate === session.date) { onClose(); return; }
     setMoving(toDate);
-    const { warnings } = await moveSession(session.sk, toDate);
+    const { warnings } = await moveSession(session.pk, session.sk, toDate);
     setMoving(null);
     onMoved(warnings);
   }

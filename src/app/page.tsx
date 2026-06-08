@@ -2,22 +2,20 @@ export const dynamic = "force-dynamic";
 import { getPlan } from "@/lib/planOps";
 import { getRecoveryWithHistory } from "@/lib/recoveryOps";
 import { enrichDay } from "@/lib/recovery";
+import { getActivePlanId } from "@/lib/activePlan";
 import WeekView from "@/components/WeekView";
 
 export default async function Home() {
+  const planId = await getActivePlanId();
   let plan;
   try {
-    plan = await getPlan();
+    plan = await getPlan(planId);
   } catch {
     return (
       <div style={{ padding: 40, textAlign: "center" }}>
         <h2 style={{ color: "var(--text-muted)", marginBottom: 12 }}>No plan data found</h2>
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          Run{" "}
-          <code style={{ background: "var(--surface-2)", padding: "2px 6px", borderRadius: 4 }}>
-            npm run seed
-          </code>{" "}
-          to load the plan into DynamoDB.
+          Run <code style={{ background: "var(--surface-2)", padding: "2px 6px", borderRadius: 4 }}>npm run seed</code> to load the plan.
         </p>
       </div>
     );
@@ -33,10 +31,7 @@ export default async function Home() {
     .filter((s) => s.weekNo === currentWeek.weekNo)
     .sort((a, b) => a.order - b.order);
 
-  // Fetch recovery with 90-day history for baseline computation
-  const allRecovery = await getRecoveryWithHistory(currentWeek.dateStart);
-
-  // Enrich each day of the week
+  const allRecovery = await getRecoveryWithHistory(currentWeek.dateStart, planId);
   const recoveryDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(currentWeek.dateStart + "T12:00:00");
     d.setDate(d.getDate() + i);
@@ -52,6 +47,7 @@ export default async function Home() {
       meta={plan.meta}
       recoveryDays={recoveryDays}
       today={today}
+      planId={planId}
     />
   );
 }

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { getPlan } from "@/lib/planOps";
+import { getActivePlanId } from "@/lib/activePlan";
 import Link from "next/link";
 import type { Week, Session } from "@/lib/types";
 
@@ -16,7 +17,8 @@ const PHASE_COLORS: Record<string, string> = {
 };
 
 export default async function OverviewPage() {
-  const plan = await getPlan();
+  const planId = await getActivePlanId();
+  const plan = await getPlan(planId);
   const today = new Date().toISOString().slice(0, 10);
 
   const sessionsByWeek: Record<number, Session[]> = {};

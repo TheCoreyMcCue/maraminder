@@ -90,7 +90,7 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
       } : undefined,
     };
 
-    await logActual(session.sk, actual);
+    await logActual(session.pk, session.sk, actual);
     setSaving(false);
     onSaved();
   }

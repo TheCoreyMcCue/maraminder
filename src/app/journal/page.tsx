@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { getPlan } from "@/lib/planOps";
 import { getRecoveryWithHistory } from "@/lib/recoveryOps";
+import { getActivePlanId } from "@/lib/activePlan";
 import { enrichDay, STATUS_COLOR, fmtDevPct, devColor } from "@/lib/recovery";
 import type { Session, Week, DailyRecovery } from "@/lib/types";
 
@@ -18,7 +19,8 @@ const CAT_COLORS: Record<string, string> = {
 };
 
 export default async function JournalPage() {
-  const plan = await getPlan();
+  const planId = await getActivePlanId();
+  const plan = await getPlan(planId);
 
   const logged = plan.sessions
     .filter((s) => s.status === "done" && s.actual)
@@ -28,7 +30,7 @@ export default async function JournalPage() {
 
   // Fetch recovery with history for baseline computation
   const allRecovery = logged.length > 0
-    ? await getRecoveryWithHistory(logged[logged.length - 1].date)
+    ? await getRecoveryWithHistory(logged[logged.length - 1].date, planId)
     : [];
 
   // Pre-enrich each unique date that has a logged session

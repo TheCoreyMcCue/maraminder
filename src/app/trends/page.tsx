@@ -1,15 +1,17 @@
 export const dynamic = "force-dynamic";
 import { getTrends, getPlan } from "@/lib/planOps";
 import { getRecoveryWithHistory } from "@/lib/recoveryOps";
+import { getActivePlanId } from "@/lib/activePlan";
 import { weeklyRecovery } from "@/lib/recovery";
 import MPHrChart from "./MPHrChart";
 import RecoveryVsLoad from "./RecoveryVsLoad";
 
 export default async function TrendsPage() {
+  const planId = await getActivePlanId();
   const [trends, plan, allRecovery] = await Promise.all([
-    getTrends(),
-    getPlan(),
-    getRecoveryWithHistory("2026-07-20"),
+    getTrends(planId),
+    getPlan(planId),
+    getRecoveryWithHistory("2026-06-08", planId),
   ]);
   const mpZone = plan.currentZones.zones.MP;
   const tZone = plan.currentZones.zones.T;

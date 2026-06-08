@@ -18,6 +18,8 @@
   --cat-steady: #06b6d4;
   --cat-rest: #6b7280;
   --cat-race: #f97316;
+  --cat-bike: #0ea5e9;
+  --cat-brick: #e879f9;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

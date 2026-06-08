@@ -53,7 +53,9 @@ export type SessionCategory =
   | "vo2"
   | "long"
   | "rest"
-  | "race";
+  | "race"
+  | "bike"
+  | "brick";
 export type SessionType = "anchor" | "fill";
 
 export interface Session {

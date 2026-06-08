@@ -6,11 +6,12 @@ import { STATUS_COLOR, fmtDevPct, devColor } from "@/lib/recovery";
 import { upsertRecovery } from "@/lib/recoveryOps";
 
 interface Props {
-  days: DailyRecovery[];  // 7 days Mon–Sun, pre-enriched server-side
-  today: string;          // YYYY-MM-DD, passed from server to avoid hydration mismatch
+  days: DailyRecovery[];
+  today: string;
+  planId: string;
 }
 
-export default function RecoveryStrip({ days, today }: Props) {
+export default function RecoveryStrip({ days, today, planId }: Props) {
   const [detail, setDetail] = useState<DailyRecovery | null>(null);
   const [showEntry, setShowEntry] = useState<string | null>(null); // date for manual entry
 
@@ -54,6 +55,7 @@ export default function RecoveryStrip({ days, today }: Props) {
       {showEntry && (
         <ManualEntryModal
           date={showEntry}
+          planId={planId}
           existing={days.find((d) => d.date === showEntry)?.reading ?? null}
           onClose={() => setShowEntry(null)}
           onSaved={() => setShowEntry(null)}
@@ -265,7 +267,8 @@ function StatusBadge({ status }: { status: RecoveryStatus }) {
 
 // ── Manual entry modal ────────────────────────────────────
 
-function ManualEntryModal({ date, existing, onClose, onSaved }: {
+function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
+  planId: string;
   date: string;
   existing: RecoveryReading | null;
   onClose: () => void;
@@ -282,7 +285,7 @@ function ManualEntryModal({ date, existing, onClose, onSaved }: {
   async function handleSave() {
     if (!hrv && !rhr && !sleep) return;
     setSaving(true);
-    await upsertRecovery({
+    await upsertRecovery(planId, {
       date,
       hrvMs: hrv ? parseFloat(hrv) : undefined,
       rhrBpm: rhr ? parseFloat(rhr) : undefined,

@@ -10,6 +10,7 @@ import {
   GetCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { docClient, TABLE_NAME, PLAN_PK } from "./db";
+import { planPk } from "./activePlan";
 import type { PlanData, PlanMeta, ZoneSet, Week, Session, Actual } from "./types";
 import { evaluateWeek } from "./rules";
 import { buildTargetSnapshot } from "./zones";
@@ -18,12 +19,13 @@ function weekPad(n: number) {
   return n.toString().padStart(2, "0");
 }
 
-export async function getPlan(): Promise<PlanData> {
+export async function getPlan(planId?: string): Promise<PlanData> {
+  const pk = planId ? planPk(planId) : PLAN_PK;
   const result = await docClient.send(
     new QueryCommand({
       TableName: TABLE_NAME,
       KeyConditionExpression: "pk = :pk",
-      ExpressionAttributeValues: { ":pk": PLAN_PK },
+      ExpressionAttributeValues: { ":pk": pk },
     })
   );
 
@@ -58,13 +60,13 @@ export async function getPlan(): Promise<PlanData> {
   return { meta, currentZones, allZones, weeks, sessions };
 }
 
-export async function getWeekData(weekNo: number): Promise<{
+export async function getWeekData(weekNo: number, planId?: string): Promise<{
   week: Week;
   sessions: Session[];
   currentZones: ZoneSet;
   meta: PlanMeta;
 }> {
-  const plan = await getPlan();
+  const plan = await getPlan(planId);
   const week = plan.weeks.find((w) => w.weekNo === weekNo);
   if (!week) throw new Error(`Week ${weekNo} not found`);
   const sessions = plan.sessions
@@ -73,26 +75,29 @@ export async function getWeekData(weekNo: number): Promise<{
   return { week, sessions, currentZones: plan.currentZones, meta: plan.meta };
 }
 
+// Mutation functions receive sessionPk (= session.pk) from the caller so they
+// work for any plan without needing to know the active plan at call time.
+
 export async function logActual(
+  sessionPk: string,
   sessionSk: string,
   actual: Omit<Actual, "targetSnapshot">
 ): Promise<void> {
   const result = await docClient.send(
-    new GetCommand({ TableName: TABLE_NAME, Key: { pk: PLAN_PK, sk: sessionSk } })
+    new GetCommand({ TableName: TABLE_NAME, Key: { pk: sessionPk, sk: sessionSk } })
   );
   if (!result.Item) throw new Error("Session not found");
 
   const session = result.Item as Session;
-
-  const plan = await getPlan();
+  const planId = sessionPk.replace("PLAN#", "");
+  const plan = await getPlan(planId);
   const snapshot = buildTargetSnapshot(session, plan.currentZones);
-
   const fullActual: Actual = { ...actual, targetSnapshot: snapshot };
 
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
-      Key: { pk: PLAN_PK, sk: sessionSk },
+      Key: { pk: sessionPk, sk: sessionSk },
       UpdateExpression: "SET #actual = :actual, #status = :status",
       ExpressionAttributeNames: { "#actual": "actual", "#status": "status" },
       ExpressionAttributeValues: { ":actual": fullActual, ":status": "done" },
@@ -101,13 +106,14 @@ export async function logActual(
 }
 
 export async function updateSessionStatus(
+  sessionPk: string,
   sessionSk: string,
   status: "planned" | "skipped" | "done" | "moved"
 ): Promise<void> {
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
-      Key: { pk: PLAN_PK, sk: sessionSk },
+      Key: { pk: sessionPk, sk: sessionSk },
       UpdateExpression: "SET #status = :status",
       ExpressionAttributeNames: { "#status": "status" },
       ExpressionAttributeValues: { ":status": status },
@@ -115,11 +121,11 @@ export async function updateSessionStatus(
   );
 }
 
-export async function unlogSession(sessionSk: string): Promise<void> {
+export async function unlogSession(sessionPk: string, sessionSk: string): Promise<void> {
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
-      Key: { pk: PLAN_PK, sk: sessionSk },
+      Key: { pk: sessionPk, sk: sessionSk },
       UpdateExpression: "SET #status = :status REMOVE #actual",
       ExpressionAttributeNames: { "#status": "status", "#actual": "actual" },
       ExpressionAttributeValues: { ":status": "planned" },
@@ -128,16 +134,16 @@ export async function unlogSession(sessionSk: string): Promise<void> {
 }
 
 export async function moveSession(
+  sessionPk: string,
   sessionSk: string,
   toDate: string
 ): Promise<{ warnings: ReturnType<typeof evaluateWeek> }> {
   const result = await docClient.send(
-    new GetCommand({ TableName: TABLE_NAME, Key: { pk: PLAN_PK, sk: sessionSk } })
+    new GetCommand({ TableName: TABLE_NAME, Key: { pk: sessionPk, sk: sessionSk } })
   );
   if (!result.Item) throw new Error("Session not found");
 
   const session = result.Item as Session;
-
   const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
     new Date(toDate + "T12:00:00").getDay()
   ];
@@ -145,43 +151,39 @@ export async function moveSession(
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
-      Key: { pk: PLAN_PK, sk: sessionSk },
+      Key: { pk: sessionPk, sk: sessionSk },
       UpdateExpression: "SET #date = :date, dayOfWeek = :dow",
       ExpressionAttributeNames: { "#date": "date" },
       ExpressionAttributeValues: { ":date": toDate, ":dow": dow },
     })
   );
 
-  const plan = await getPlan();
+  const planId = sessionPk.replace("PLAN#", "");
+  const plan = await getPlan(planId);
   const weekSessions = plan.sessions.filter((s) => s.weekNo === session.weekNo);
   const week = plan.weeks.find((w) => w.weekNo === session.weekNo);
   const warnings = evaluateWeek(weekSessions, week);
-
   return { warnings };
 }
 
 export async function recalibrateZones(
+  planId: string,
   newZones: ZoneSet["zones"],
   effectiveWeek: number,
   source: string
 ): Promise<void> {
-  const plan = await getPlan();
+  const pk = planPk(planId);
+  const plan = await getPlan(planId);
   const nextVersion = plan.meta.currentZoneVersion + 1;
 
-  const newZoneSet: ZoneSet = {
-    pk: PLAN_PK,
-    sk: `ZONES#${nextVersion}`,
-    version: nextVersion,
-    effectiveWeek,
-    source,
-    zones: newZones,
-  };
-
-  await docClient.send(new PutCommand({ TableName: TABLE_NAME, Item: newZoneSet }));
+  await docClient.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: { pk, sk: `ZONES#${nextVersion}`, version: nextVersion, effectiveWeek, source, zones: newZones },
+  }));
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
-      Key: { pk: PLAN_PK, sk: "META" },
+      Key: { pk, sk: "META" },
       UpdateExpression: "SET currentZoneVersion = :v",
       ExpressionAttributeValues: { ":v": nextVersion },
     })
@@ -189,6 +191,7 @@ export async function recalibrateZones(
 }
 
 export async function updateSession(
+  sessionPk: string,
   sessionSk: string,
   patch: Partial<Pick<Session, "title" | "structure" | "targetDistanceKm" | "targetDurationMin">>
 ): Promise<void> {
@@ -202,7 +205,7 @@ export async function updateSession(
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
-      Key: { pk: PLAN_PK, sk: sessionSk },
+      Key: { pk: sessionPk, sk: sessionSk },
       UpdateExpression: `SET ${setExpr}`,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
@@ -232,13 +235,13 @@ function buildZoneHistory(
     .sort((a: ZoneHistoryPoint, b: ZoneHistoryPoint) => a.date.localeCompare(b.date));
 }
 
-export async function getTrends(): Promise<{
+export async function getTrends(planId?: string): Promise<{
   mpHrHistory: ZoneHistoryPoint[];
   thresholdHrHistory: ZoneHistoryPoint[];
   easyPaceHistory: Array<{ date: string; pace: string; weekNo: number }>;
   weeklyVolume: Array<{ weekNo: number; targetKm: number; actualKm: number }>;
 }> {
-  const plan = await getPlan();
+  const plan = await getPlan(planId);
   const logged = plan.sessions.filter((s) => s.status === "done" && s.actual);
 
   const mpHrHistory = buildZoneHistory(logged, "MP");

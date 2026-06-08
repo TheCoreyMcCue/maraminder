@@ -10,13 +10,15 @@ export async function GET(req: NextRequest) {
   }
 
   const pretty = req.nextUrl.searchParams.get("pretty") === "1";
+  const planId = req.nextUrl.searchParams.get("plan") ?? "amsterdam26";
+  const exportPk = `PLAN#${planId}`;
 
   // ── Single Query — every item under this plan partition ──
   const result = await docClient.send(
     new QueryCommand({
       TableName: TABLE_NAME,
       KeyConditionExpression: "pk = :pk",
-      ExpressionAttributeValues: { ":pk": PLAN_PK },
+      ExpressionAttributeValues: { ":pk": exportPk },
     })
   );
 

@@ -30,6 +30,7 @@ interface Props {
   meta: PlanMeta;
   recoveryDays?: DailyRecovery[];
   today?: string;
+  planId?: string;
 }
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -45,7 +46,7 @@ function dateToDow(iso: string) {
   return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(iso + "T12:00:00").getDay()];
 }
 
-export default function WeekView({ week, sessions, zones, allWeeks, meta, recoveryDays, today: todayProp }: Props) {
+export default function WeekView({ week, sessions, zones, allWeeks, meta, recoveryDays, today: todayProp, planId }: Props) {
   const router = useRouter();
   const [activeId, setActiveId] = useState<string | null>(null);
   // Use server-provided today to avoid hydration mismatch
@@ -94,7 +95,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
     const dow = dateToDow(toDate);
     startTransition(async () => {
       shiftSession({ sk: session.sk, date: toDate, dow });
-      const { warnings } = await moveSession(session.sk, toDate);
+      const { warnings } = await moveSession(session.pk, session.sk, toDate);
       setPostMoveWarnings(warnings);
       router.refresh();
     });
@@ -211,7 +212,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: 8 }}>
             RECOVERY
           </div>
-          <RecoveryStrip days={recoveryDays} today={today} />
+          <RecoveryStrip days={recoveryDays} today={today} planId={planId ?? "amsterdam26"} />
         </div>
       )}
 

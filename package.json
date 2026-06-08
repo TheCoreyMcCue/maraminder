@@ -9,7 +9,8 @@
     "lint": "eslint",
     "seed": "npx tsx --env-file=.env.local scripts/seed.ts",
     "create-table": "npx tsx --env-file=.env.local scripts/createTable.ts",
-    "patch": "npx tsx --env-file=.env.local scripts/patch-v2.ts"
+    "patch": "npx tsx --env-file=.env.local scripts/patch-v2.ts",
+    "seed-bridge": "npx tsx --env-file=.env.local scripts/seedBridge.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1063.0",

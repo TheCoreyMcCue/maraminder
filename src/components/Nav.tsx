@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { switchPlan } from "@/app/actions";
+import type { PLANS } from "@/lib/activePlan";
 
 const links = [
   { href: "/",        label: "Week",     icon: CalIcon },
@@ -10,7 +12,12 @@ const links = [
   { href: "/trends",  label: "Trends",   icon: TrendIcon },
 ];
 
-export default function Nav() {
+interface NavProps {
+  currentPlanId: string;
+  plans: typeof PLANS[number][];
+}
+
+export default function Nav({ currentPlanId, plans }: NavProps) {
   const path = usePathname();
 
   function isActive(href: string) {
@@ -37,6 +44,32 @@ export default function Nav() {
         <span style={{ fontWeight: 700, fontSize: 16, color: "var(--accent)", letterSpacing: "-0.03em" }}>
           Maraminder
         </span>
+
+        {/* Plan switcher */}
+        <form action={switchPlan} style={{ display: "flex", alignItems: "center" }}>
+          <select
+            name="planId"
+            defaultValue={currentPlanId}
+            onChange={(e) => (e.target.closest("form") as HTMLFormElement)?.requestSubmit()}
+            style={{
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 7,
+              color: "var(--text)",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "4px 8px",
+              cursor: "pointer",
+              outline: "none",
+              maxWidth: 180,
+            }}
+          >
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>{p.short}</option>
+            ))}
+          </select>
+        </form>
+
         {/* Desktop nav links */}
         <div className="top-nav-links">
           {links.map((l) => (

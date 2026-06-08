@@ -9,6 +9,7 @@ interface Props {
   currentZones: ZoneSet;
   allZones: ZoneSet[];
   currentWeekNo: number;
+  planId: string;
 }
 
 const ZONE_KEYS: ZoneKey[] = ["E", "S", "MP", "T", "I"];
@@ -28,7 +29,7 @@ const ZONE_DESC: Record<ZoneKey, string> = {
   I: "Short reps only, by feel. Lowest priority.",
 };
 
-export default function ZonesClient({ currentZones, allZones, currentWeekNo }: Props) {
+export default function ZonesClient({ currentZones, allZones, currentWeekNo, planId }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ZoneSet["zones"]>(
@@ -45,7 +46,7 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo }: P
   async function handleSave() {
     if (!source.trim()) return;
     setSaving(true);
-    await recalibrateZones(draft, effectiveWeek, source);
+    await recalibrateZones(planId, draft, effectiveWeek, source);
     setSaving(false);
     setEditing(false);
     router.refresh();

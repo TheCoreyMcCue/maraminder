@@ -26,7 +26,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "date (YYYY-MM-DD) required" }, { status: 400 });
   }
 
-  await upsertRecovery({
+  const planId = (body.plan as string | undefined) ?? "amsterdam26";
+
+  await upsertRecovery(planId, {
     date,
     hrvMs: num(body.hrvMs),
     rhrBpm: num(body.rhrBpm),
@@ -45,7 +47,8 @@ export async function GET(req: NextRequest) {
   if (!checkSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const readings = await getRecovery();
+  const planId = req.nextUrl.searchParams.get("plan") ?? "amsterdam26";
+  const readings = await getRecovery(planId);
   return NextResponse.json(readings);
 }
 
