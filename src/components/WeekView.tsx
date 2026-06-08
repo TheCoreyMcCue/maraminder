@@ -218,7 +218,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
 
       {/* ── Day grid with DnD ── */}
       <DndContext id="week-board" sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="week-grid" style={{ padding: "0 0" }}>
+        <div className="week-grid">
           {weekDates.map(({ date, dow, sessions: daySessions }) => {
             const dateObj = new Date(date + "T12:00:00");
             const isToday = today !== "" && date === today;

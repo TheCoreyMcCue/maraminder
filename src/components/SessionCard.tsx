@@ -18,6 +18,19 @@ interface Props {
   dragAttributes?: Record<string, unknown>;
 }
 
+const LOG_LABEL: Partial<Record<import("@/lib/types").SessionCategory, string>> = {
+  easy:      "Log run",
+  steady:    "Log run",
+  mp:        "Log run",
+  threshold: "Log run",
+  vo2:       "Log run",
+  long:      "Log run",
+  race:      "Log race",
+  bike:      "Log ride",
+  brick:     "Log brick",
+  rest:      "Log",
+};
+
 export default function SessionCard({
   session, zones, weekDates, warnings = [],
   dragListeners, dragAttributes,
@@ -177,7 +190,7 @@ export default function SessionCard({
         {/* Action buttons */}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <Btn onClick={() => setShowLog(true)} disabled={isSkipped}>
-            {isDone ? "Edit log" : "Log run"}
+            {isDone ? "Edit log" : LOG_LABEL[session.category] ?? "Log"}
           </Btn>
           {isDone ? (
             <Btn onClick={handleUnlog} muted>Unlog</Btn>
