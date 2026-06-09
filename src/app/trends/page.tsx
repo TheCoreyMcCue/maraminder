@@ -2,16 +2,18 @@ export const dynamic = "force-dynamic";
 import { getTrends, getPlan } from "@/lib/planOps";
 import { getRecoveryWithHistory } from "@/lib/recoveryOps";
 import { getActivePlanId } from "@/lib/activePlan";
-import { weeklyRecovery } from "@/lib/recovery";
+import { getPersonalBaseline } from "@/lib/baselineOps";
+import { computeWeeklyAnalysis } from "@/lib/weeklyAnalysis";
 import MPHrChart from "./MPHrChart";
 import RecoveryVsLoad from "./RecoveryVsLoad";
 
 export default async function TrendsPage() {
   const planId = await getActivePlanId();
-  const [trends, plan, allRecovery] = await Promise.all([
+  const [trends, plan, allRecovery, baseline] = await Promise.all([
     getTrends(planId),
     getPlan(planId),
     getRecoveryWithHistory("2026-06-08", planId),
+    getPersonalBaseline(),
   ]);
   const mpZone = plan.currentZones.zones.MP;
   const tZone = plan.currentZones.zones.T;
@@ -21,13 +23,9 @@ export default async function TrendsPage() {
   const tTargetLow = tZone.hrLow ?? 180;
   const tTargetHigh = tZone.hrHigh ?? 187;
 
-  // Build recovery + load data per week
-  const recoveryWeeks = plan.weeks.map((w) => ({
-    weekNo: w.weekNo,
-    targetKm: w.volumeTargetKm,
-    actualKm: trends.weeklyVolume.find((v) => v.weekNo === w.weekNo)?.actualKm ?? 0,
-    recovery: weeklyRecovery(allRecovery, w.dateStart),
-  }));
+  const weeklyAnalysis = computeWeeklyAnalysis(
+    plan.weeks, plan.sessions, allRecovery, baseline, plan.allZones, plan.meta
+  );
 
   return (
     <div className="main-content" style={{ padding: "16px", maxWidth: 900, margin: "0 auto" }}>
@@ -78,7 +76,7 @@ export default async function TrendsPage() {
 
       {/* Recovery vs Load */}
       <Section title="Recovery vs Load">
-        <RecoveryVsLoad weeks={recoveryWeeks} />
+        <RecoveryVsLoad weeks={weeklyAnalysis} />
       </Section>
 
       {/* Weekly volume */}

@@ -108,6 +108,17 @@ export interface Warning {
   sessionIds?: string[];
 }
 
+// ── Personal baseline ─────────────────────────────────────
+
+export interface PersonalBaseline {
+  pk: string;   // "USER#default"
+  sk: string;   // "RECOVERY_BASELINE"
+  hrv:   { mean: number; sd: number };
+  rhr:   { mean: number; sd: number };
+  sleepTargetHours: number;
+  note?: string;
+}
+
 // ── Recovery ──────────────────────────────────────────────
 
 export interface RecoveryReading {
@@ -121,6 +132,7 @@ export interface RecoveryReading {
   readiness?: number;
   source: "shortcuts" | "manual" | "export-tool";
   note?: string;
+  lifeStress?: number; // 1–10 subjective scale
 }
 
 export type RecoveryStatus = "green" | "amber" | "red" | "unknown";

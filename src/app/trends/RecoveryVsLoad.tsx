@@ -1,70 +1,57 @@
 "use client";
 import { useState } from "react";
-import type { WeeklyRecovery } from "@/lib/types";
-import { STATUS_COLOR } from "@/lib/recovery";
+import type { WeekAnalysis } from "@/lib/weeklyAnalysis";
 
-interface WeekPoint {
-  weekNo: number;
-  targetKm: number;
-  actualKm: number;
-  recovery: WeeklyRecovery;
-}
+type SeriesKey = "load" | "lifeStress" | "recovery";
 
-type SeriesKey = "volume" | "hrv" | "rhr" | "sleep";
+const STATUS_COLOR = {
+  adapting:  "#22c55e",
+  watch:     "#f59e0b",
+  recovering:"#3b82f6",
+  neutral:   "transparent",
+};
 
-export default function RecoveryVsLoad({ weeks }: { weeks: WeekPoint[] }) {
-  const [visible, setVisible] = useState<Set<SeriesKey>>(
-    new Set(["volume", "hrv", "rhr", "sleep"])
-  );
+const ANN_COLOR: Record<string, string> = {
+  down:          "#22c55e",
+  race:          "#f97316",
+  half:          "#f97316",
+  "taper-start": "#06b6d4",
+  recalibration: "#8b5cf6",
+};
 
-  function toggle(k: SeriesKey) {
-    setVisible((prev) => {
-      const next = new Set(prev);
-      next.has(k) ? next.delete(k) : next.add(k);
-      return next;
-    });
-  }
+export default function RecoveryVsLoad({ weeks }: { weeks: WeekAnalysis[] }) {
+  const [visible, setVisible] = useState<Set<SeriesKey>>(new Set(["load", "lifeStress", "recovery"]));
+  const toggle = (k: SeriesKey) => setVisible((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const show = (k: SeriesKey) => visible.has(k);
 
-  const weeksWithData = weeks.filter((w) => w.actualKm > 0 || w.recovery.status !== "unknown");
-
-  if (weeksWithData.length === 0) {
+  const weeksWithAny = weeks.filter((w) => w.actualLoad > 0 || w.recoveryIndex != null || w.annotations.length > 0);
+  if (weeksWithAny.length === 0) {
     return <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Log sessions and recovery data to see this chart.</p>;
   }
 
   // ── Geometry ──────────────────────────────────────────────
-  const VW = 540;
-  const VH = 220;
-  const PAD = { top: 16, right: 50, bottom: 32, left: 42 };
+  const VW = 560, VH = 230;
+  const PAD = { top: 24, right: 52, bottom: 52, left: 44 };
   const CW = VW - PAD.left - PAD.right;
   const CH = VH - PAD.top - PAD.bottom;
 
-  const allWeekNos = weeks.map((w) => w.weekNo);
-  const xMin = Math.min(...allWeekNos);
-  const xMax = Math.max(...allWeekNos);
+  const allWeeks = weeks.map((w) => w.weekNo);
+  const xMin = Math.min(...allWeeks), xMax = Math.max(...allWeeks);
   const xRange = xMax === xMin ? 1 : xMax - xMin;
-  const xp = (w: number) => PAD.left + ((w - xMin) / xRange) * CW;
-  const barW = Math.max(4, (CW / weeks.length) * 0.55);
+  const xp = (wn: number) => PAD.left + ((wn - xMin) / xRange) * CW;
+  const barW = Math.max(6, (CW / weeks.length) * 0.55);
 
-  // Volume scale (left)
-  const maxVol = Math.max(...weeks.map((w) => Math.max(w.targetKm, w.actualKm)), 10);
-  const yVol = (km: number) => PAD.top + CH - (km / maxVol) * CH;
+  // Load scale (left) — total load including life stress
+  const allTotalLoads = weeks.map((w) => Math.max(w.totalLoad, w.plannedLoad));
+  const maxLoad = Math.max(...allTotalLoads, 500);
+  const yLoad = (v: number) => PAD.top + CH - (v / maxLoad) * CH;
 
-  // HRV deviation scale (right, centred at 0)
-  const hrvVals = weeks.map((w) => w.recovery.avgHrvDevPct).filter((v): v is number => v != null);
-  const hrvAbsMax = Math.max(...hrvVals.map(Math.abs), 15);
-  const yHrv = (pct: number) => PAD.top + CH / 2 - (pct / hrvAbsMax) * (CH / 2);
+  // Recovery index scale (right) — symmetric around 0, ±30
+  const recScale = 30;
+  const yRec = (v: number) => PAD.top + CH / 2 - (v / recScale) * (CH / 2);
 
-  // RHR scale (secondary right axis, normalized)
-  const rhrVals = weeks.map((w) => w.recovery.avgRhr).filter((v): v is number => v != null);
-  const rhrMin = rhrVals.length ? Math.min(...rhrVals) - 3 : 40;
-  const rhrMax = rhrVals.length ? Math.max(...rhrVals) + 3 : 60;
-  const yRhr = (bpm: number) => PAD.top + CH - ((bpm - rhrMin) / (rhrMax - rhrMin)) * CH;
-
-  // Sleep scale (0–9h)
-  const ySlp = (h: number) => PAD.top + CH - (h / 9) * CH;
-
-  function smoothPath(pts: { x: number; y: number }[]) {
+  // Smooth path
+  function smoothPath(pts: { x: number; y: number }[]): string {
     if (pts.length < 2) return pts.length ? `M ${pts[0].x} ${pts[0].y}` : "";
     return pts.reduce((acc, pt, i) => {
       if (i === 0) return `M ${pt.x} ${pt.y}`;
@@ -74,170 +61,252 @@ export default function RecoveryVsLoad({ weeks }: { weeks: WeekPoint[] }) {
     }, "");
   }
 
-  const hrvPts = weeks
-    .filter((w) => w.recovery.avgHrvDevPct != null)
-    .map((w) => ({ x: xp(w.weekNo), y: yHrv(w.recovery.avgHrvDevPct!) }));
-  const rhrPts = weeks
-    .filter((w) => w.recovery.avgRhr != null)
-    .map((w) => ({ x: xp(w.weekNo), y: yRhr(w.recovery.avgRhr!) }));
-  const sleepPts = weeks
-    .filter((w) => w.recovery.avgSleep != null)
-    .map((w) => ({ x: xp(w.weekNo), y: ySlp(w.recovery.avgSleep!) }));
+  const recPts = weeks
+    .filter((w) => w.recoveryIndex != null)
+    .map((w) => ({ x: xp(w.weekNo), y: yRec(w.recoveryIndex!) }));
+  const recPath = smoothPath(recPts);
 
-  // Volume ticks
-  const volTicks = [0, 25, 50, 75, 100].filter((t) => t <= maxVol + 10);
+  // Load axis ticks
+  const loadTickStep = maxLoad > 4000 ? 1000 : maxLoad > 2000 ? 500 : 250;
+  const loadTicks: number[] = [];
+  for (let v = 0; v <= maxLoad; v += loadTickStep) loadTicks.push(v);
+
+  // Recovery ticks
+  const recTicks = [-30, -20, -10, 0, 10, 20, 30];
+
+  const watchWeeks = weeks.filter((w) => w.status === "watch" && w.verdict);
 
   return (
     <div>
       <svg viewBox={`0 0 ${VW} ${VH}`} style={{ width: "100%", height: "auto", display: "block" }}>
-        {/* Grid */}
-        {volTicks.map((t) => (
-          <line key={t} x1={PAD.left} y1={yVol(t)} x2={PAD.left + CW} y2={yVol(t)}
+        <defs>
+          <linearGradient id="loadGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6b7280" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#6b7280" stopOpacity="0.15" />
+          </linearGradient>
+          <linearGradient id="lifeGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#f97316" stopOpacity="0.1" />
+          </linearGradient>
+        </defs>
+
+        {/* "Watch" week amber background bands */}
+        {weeks.map((w) => w.status === "watch" ? (
+          <rect key={w.weekNo}
+            x={xp(w.weekNo) - barW} y={PAD.top}
+            width={barW * 2.5} height={CH}
+            fill="#f59e0b0a" stroke="#f59e0b20" strokeWidth={0.5} />
+        ) : null)}
+
+        {/* Grid lines (load) */}
+        {loadTicks.filter((_, i) => i % 2 === 0).map((v) => (
+          <line key={v} x1={PAD.left} y1={yLoad(v)} x2={PAD.left + CW} y2={yLoad(v)}
             stroke="#2e2e36" strokeWidth={0.5} />
         ))}
-        {/* Zero line for HRV deviation */}
-        {show("hrv") && (
-          <line x1={PAD.left} y1={yHrv(0)} x2={PAD.left + CW} y2={yHrv(0)}
-            stroke="#22c55e" strokeWidth={0.5} strokeDasharray="3 3" opacity={0.4} />
-        )}
 
-        {/* Left axis — volume */}
-        <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH}
-          stroke="#6b728050" strokeWidth={1} />
-        {volTicks.map((t) => (
-          <text key={t} x={PAD.left - 5} y={yVol(t)} textAnchor="end"
-            dominantBaseline="middle" fill="#888896" fontSize={8.5}>{t}</text>
+        {/* Zero line for recovery index */}
+        <line x1={PAD.left} y1={yRec(0)} x2={PAD.left + CW} y2={yRec(0)}
+          stroke="#22c55e" strokeWidth={0.6} strokeDasharray="4 3" opacity={0.4} />
+
+        {/* Left axis — load */}
+        <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH} stroke="#6b728040" strokeWidth={1} />
+        {loadTicks.filter((_, i) => i % 2 === 0).map((v) => (
+          <text key={v} x={PAD.left - 5} y={yLoad(v)} textAnchor="end" dominantBaseline="middle"
+            fill="#888896" fontSize={8.5}>{v >= 1000 ? `${v / 1000}k` : v}</text>
         ))}
-        <text x={10} y={PAD.top + CH / 2} textAnchor="middle" fill="#6b7280"
-          fontSize={8} transform={`rotate(-90, 10, ${PAD.top + CH / 2})`}>km</text>
+        <text x={10} y={PAD.top + CH / 2} textAnchor="middle" fill="#6b7280" fontSize={8}
+          transform={`rotate(-90, 10, ${PAD.top + CH / 2})`}>load</text>
 
-        {/* Right axis — HRV % */}
-        {show("hrv") && (
-          <>
-            <line x1={PAD.left + CW} y1={PAD.top} x2={PAD.left + CW} y2={PAD.top + CH}
-              stroke="#22c55e40" strokeWidth={1} />
-            {[-20, -10, 0, 10, 20].filter((v) => Math.abs(v) <= hrvAbsMax + 5).map((v) => (
-              <text key={v} x={PAD.left + CW + 4} y={yHrv(v)} textAnchor="start"
-                dominantBaseline="middle" fill="#22c55e" fontSize={7.5} opacity={0.7}>
-                {v > 0 ? `+${v}` : v}%
-              </text>
-            ))}
-          </>
-        )}
+        {/* Right axis — recovery index */}
+        <line x1={PAD.left + CW} y1={PAD.top} x2={PAD.left + CW} y2={PAD.top + CH}
+          stroke="#22c55e40" strokeWidth={1} />
+        {recTicks.filter((_, i) => i % 2 === 0).map((v) => (
+          <text key={v} x={PAD.left + CW + 5} y={yRec(v)} textAnchor="start" dominantBaseline="middle"
+            fill="#22c55e" fontSize={8.5} opacity={0.8}>
+            {v > 0 ? `+${v}` : v}%
+          </text>
+        ))}
+        <text x={VW - 7} y={PAD.top + CH / 2} textAnchor="middle" fill="#22c55e" fontSize={8} opacity={0.7}
+          transform={`rotate(90, ${VW - 7}, ${PAD.top + CH / 2})`}>recovery</text>
 
-        {/* Volume bars */}
-        {show("volume") && weeks.map((w) => {
+        {/* X axis */}
+        <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH}
+          stroke="#2e2e36" strokeWidth={1} />
+
+        {/* Bars */}
+        {show("load") && weeks.map((w) => {
           const cx = xp(w.weekNo);
-          const targetH = CH - (yVol(w.targetKm) - PAD.top);
-          const actualH = w.actualKm > 0 ? CH - (yVol(w.actualKm) - PAD.top) : 0;
-          const statusColor = w.recovery.status !== "unknown" ? STATUS_COLOR[w.recovery.status] : "var(--border)";
+          const trainH = (w.actualLoad / maxLoad) * CH;
+          const lifeH = (w.lifeStressLoad / maxLoad) * CH;
+          const plannedH = (w.plannedLoad / maxLoad) * CH;
+
           return (
             <g key={w.weekNo}>
-              {/* Target bar (outline) */}
-              <rect x={cx - barW / 2} y={yVol(w.targetKm)} width={barW} height={targetH}
-                fill="none" stroke="#6b728030" strokeWidth={1} />
-              {/* Actual bar */}
-              {w.actualKm > 0 && (
-                <rect x={cx - barW / 2} y={yVol(w.actualKm)} width={barW} height={actualH}
-                  fill="#6b728040" />
+              {/* Planned ghost outline */}
+              {w.plannedLoad > 0 && (
+                <rect x={cx - barW / 2} y={yLoad(w.plannedLoad)} width={barW} height={plannedH}
+                  fill="none" stroke="#6b728030" strokeWidth={1} />
               )}
-              {/* Recovery status dot above bar */}
-              {w.recovery.status !== "unknown" && (
-                <circle cx={cx} cy={yVol(Math.max(w.targetKm, w.actualKm)) - 6} r={3}
-                  fill={statusColor} />
+              {/* Training load bar */}
+              {w.actualLoad > 0 && (
+                <rect x={cx - barW / 2} y={yLoad(w.actualLoad)} width={barW} height={trainH}
+                  fill="url(#loadGrad)" />
+              )}
+              {/* Life stress stacked on top */}
+              {show("lifeStress") && w.lifeStressLoad > 0 && w.actualLoad > 0 && (
+                <rect
+                  x={cx - barW / 2}
+                  y={yLoad(w.actualLoad + w.lifeStressLoad)}
+                  width={barW}
+                  height={lifeH}
+                  fill="url(#lifeGrad)"
+                />
               )}
             </g>
           );
         })}
 
-        {/* HRV deviation line */}
-        {show("hrv") && (
+        {/* Recovery index line */}
+        {show("recovery") && (
           <>
-            <path d={smoothPath(hrvPts)} fill="none" stroke="#22c55e" strokeWidth={2}
+            <path d={recPath} fill="none" stroke="#22c55e" strokeWidth={2}
               strokeLinecap="round" strokeLinejoin="round" />
-            {hrvPts.map((pt, i) => {
-              const w = weeks.filter((w) => w.recovery.avgHrvDevPct != null)[i];
-              return (
-                <circle key={i} cx={pt.x} cy={pt.y} r={3.5}
-                  fill={w.recovery.avgHrvDevPct! >= 0 ? "#22c55e" : "#ef4444"}
-                  stroke="#22c55e" strokeWidth={1.5} />
-              );
-            })}
+            {weeks
+              .filter((w) => w.recoveryIndex != null)
+              .map((w) => {
+                const recColor = w.recoveryIndex! >= 0 ? "#22c55e"
+                  : w.recoveryIndex! > -15 ? "#f59e0b" : "#ef4444";
+                return (
+                  <circle key={w.weekNo}
+                    cx={xp(w.weekNo)} cy={yRec(w.recoveryIndex!)} r={4}
+                    fill={recColor} stroke="#22c55e" strokeWidth={1.5} />
+                );
+              })}
           </>
         )}
 
-        {/* RHR line */}
-        {show("rhr") && rhrPts.length > 0 && (
-          <>
-            <path d={smoothPath(rhrPts)} fill="none" stroke="#f97316" strokeWidth={1.5}
-              strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2" />
-            {rhrPts.map((pt, i) => (
-              <circle key={i} cx={pt.x} cy={pt.y} r={3} fill="#f97316" />
-            ))}
-          </>
-        )}
-
-        {/* Sleep line */}
-        {show("sleep") && sleepPts.length > 0 && (
-          <>
-            <path d={smoothPath(sleepPts)} fill="none" stroke="#8b5cf6" strokeWidth={1.5}
-              strokeLinecap="round" strokeLinejoin="round" strokeDasharray="2 3" />
-            {sleepPts.map((pt, i) => (
-              <circle key={i} cx={pt.x} cy={pt.y} r={3} fill="#8b5cf6" />
-            ))}
-          </>
-        )}
+        {/* Status dots above bars (adapting/watch/recovering) */}
+        {weeks.map((w) => {
+          if (w.status === "neutral") return null;
+          const cx = xp(w.weekNo);
+          const barTop = w.totalLoad > 0 ? yLoad(w.totalLoad + w.lifeStressLoad) : PAD.top + CH - 8;
+          return (
+            <circle key={w.weekNo} cx={cx} cy={barTop - 7} r={3.5}
+              fill={STATUS_COLOR[w.status]} opacity={0.9} />
+          );
+        })}
 
         {/* X axis labels */}
         {weeks.map((w) => (
           <text key={w.weekNo} x={xp(w.weekNo)} y={PAD.top + CH + 12}
-            textAnchor="middle" fill="#888896" fontSize={8.5}>W{w.weekNo}</text>
+            textAnchor="middle" fill="#888896" fontSize={9} fontWeight={600}>
+            W{w.weekNo}
+          </text>
         ))}
+
+        {/* Annotations */}
+        {weeks.map((w) =>
+          w.annotations.map((ann, ai) => (
+            <text key={`${w.weekNo}-${ai}`}
+              x={xp(w.weekNo)} y={PAD.top + CH + 24 + ai * 10}
+              textAnchor="middle" fill={ANN_COLOR[ann.type]} fontSize={7.5} fontWeight={700}>
+              {ann.label}
+            </text>
+          ))
+        )}
       </svg>
 
-      {/* Legend */}
+      {/* Verdict chips */}
+      {watchWeeks.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+          {watchWeeks.map((w) => (
+            <WatchVerdict key={w.weekNo} week={w} />
+          ))}
+        </div>
+      )}
+
+      {/* Legend + toggles */}
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <ToggleItem label="Volume" color="#6b7280" filled active={show("volume")} onClick={() => toggle("volume")} />
-        <ToggleItem label="HRV dev" color="#22c55e" active={show("hrv")} onClick={() => toggle("hrv")} />
-        <ToggleItem label="RHR" color="#f97316" dashed active={show("rhr")} onClick={() => toggle("rhr")} />
-        <ToggleItem label="Sleep" color="#8b5cf6" dashed active={show("sleep")} onClick={() => toggle("sleep")} />
+        <Toggle label="Training load" color="#6b7280" filled active={show("load")} onClick={() => toggle("load")} />
+        <Toggle label="+ Life stress" color="#f97316" filled active={show("lifeStress")} onClick={() => toggle("lifeStress")} />
+        <Toggle label="Recovery index" color="#22c55e" active={show("recovery")} onClick={() => toggle("recovery")} />
+        <span style={{ fontSize: 11, color: "var(--text-muted)", alignSelf: "center", marginLeft: 4 }}>
+          Bars = actual (ghost = planned) · ● status
+        </span>
       </div>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-        Coloured dots above bars = weekly recovery status. HRV line above zero = better than baseline.
+
+      {/* Recovery index explainer */}
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, opacity: 0.65, lineHeight: 1.6 }}>
+        Recovery index = HRV 60% + RHR 25% + sleep 15%, all vs personal baseline.
+        Above zero = better than baseline. Tap a day badge in the week view for the full breakdown.
       </div>
     </div>
   );
 }
 
-function ToggleItem({ label, color, filled, dashed, active, onClick }: {
-  label: string; color: string; filled?: boolean; dashed?: boolean; active: boolean; onClick: () => void;
-}) {
+// ── Watch verdict chip ────────────────────────────────────
+
+function WatchVerdict({ week }: { week: WeekAnalysis }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <button
-      onClick={onClick}
+    <div
+      onClick={() => setOpen((v) => !v)}
       style={{
-        display: "flex", alignItems: "center", gap: 6,
-        padding: "4px 10px", borderRadius: 20,
-        border: `1px solid ${active ? color + "60" : "var(--border)"}`,
-        background: active ? color + "14" : "transparent",
-        color: active ? "var(--text)" : "var(--text-muted)",
-        fontSize: 12, cursor: "pointer",
-        transition: "all 0.15s",
-        WebkitTapHighlightColor: "transparent",
+        display: "flex", alignItems: "flex-start", gap: 8,
+        padding: "9px 12px",
+        background: "#f59e0b0a", border: "1px solid #f59e0b30",
+        borderLeft: "3px solid #f59e0b",
+        borderRadius: 8, cursor: "pointer",
       }}
     >
-      {dashed ? (
-        <svg width={16} height={8}>
-          <line x1={0} y1={4} x2={16} y2={4} stroke={active ? color : "var(--text-muted)"}
-            strokeWidth={1.5} strokeDasharray="4 2" />
-        </svg>
-      ) : (
-        <svg width={10} height={10}>
-          <circle cx={5} cy={5} r={4}
-            fill={active ? color + "60" : "transparent"}
-            stroke={active ? color : "var(--text-muted)"} strokeWidth={1.5} />
-        </svg>
-      )}
+      <span style={{ fontSize: 12, color: "#f59e0b", marginTop: 1 }}>⚠</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
+          {week.verdict}
+        </div>
+        {open && week.recoveryComponents && (
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {week.recoveryComponents.hrv != null && (
+              <span>HRV {week.recoveryComponents.hrv > 0 ? "+" : ""}{week.recoveryComponents.hrv}% vs baseline</span>
+            )}
+            {week.recoveryComponents.rhr != null && (
+              <span>RHR {week.recoveryComponents.rhr > 0 ? "+" : ""}{week.recoveryComponents.rhr}% (inverted)</span>
+            )}
+            {week.recoveryComponents.sleep != null && (
+              <span>Sleep {week.recoveryComponents.sleep > 0 ? "+" : ""}{week.recoveryComponents.sleep}% vs target</span>
+            )}
+            {week.recoveryDays > 0 && (
+              <span style={{ opacity: 0.6 }}>{week.recoveryDays} day{week.recoveryDays > 1 ? "s" : ""} of data</span>
+            )}
+          </div>
+        )}
+      </div>
+      <span style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{open ? "▲" : "▼"}</span>
+    </div>
+  );
+}
+
+// ── Toggle pill ───────────────────────────────────────────
+
+function Toggle({ label, color, filled, active, onClick }: {
+  label: string; color: string; filled?: boolean; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} style={{
+      display: "flex", alignItems: "center", gap: 5,
+      padding: "4px 10px", borderRadius: 20,
+      border: `1px solid ${active ? color + "60" : "var(--border)"}`,
+      background: active ? color + "14" : "transparent",
+      color: active ? "var(--text)" : "var(--text-muted)",
+      fontSize: 12, cursor: "pointer", transition: "all 0.15s",
+      WebkitTapHighlightColor: "transparent",
+    }}>
+      <svg width={10} height={10}>
+        <circle cx={5} cy={5} r={4}
+          fill={active && filled ? color : "transparent"}
+          stroke={active ? color : "var(--text-muted)"} strokeWidth={1.5} />
+      </svg>
       {label}
       {!active && <span style={{ fontSize: 10, opacity: 0.5 }}>off</span>}
     </button>

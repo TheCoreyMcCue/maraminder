@@ -20,7 +20,9 @@ import { moveSession } from "@/lib/planOps";
 import SessionCard from "./SessionCard";
 import CategoryPill from "./CategoryPill";
 import RecoveryStrip from "./RecoveryStrip";
-import type { DailyRecovery } from "@/lib/types";
+import DailyReadout from "./DailyReadout";
+import type { DailyRecovery, PersonalBaseline } from "@/lib/types";
+import type { DailyLoadRec } from "@/lib/loadRecommendation";
 
 interface Props {
   week: Week;
@@ -31,6 +33,9 @@ interface Props {
   recoveryDays?: DailyRecovery[];
   today?: string;
   planId?: string;
+  dailyRec?: DailyLoadRec;
+  loadFactor?: import("@/lib/loadFactor").LoadFactorResult;
+  baseline?: PersonalBaseline;
 }
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -46,7 +51,7 @@ function dateToDow(iso: string) {
   return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(iso + "T12:00:00").getDay()];
 }
 
-export default function WeekView({ week, sessions, zones, allWeeks, meta, recoveryDays, today: todayProp, planId }: Props) {
+export default function WeekView({ week, sessions, zones, allWeeks, meta, recoveryDays, today: todayProp, planId, dailyRec, loadFactor, baseline }: Props) {
   const router = useRouter();
   const [activeId, setActiveId] = useState<string | null>(null);
   // Use server-provided today to avoid hydration mismatch
@@ -205,6 +210,22 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
           </div>
         )}
       </div>
+
+      {/* ── Daily readout (today only) ── */}
+      {dailyRec && baseline && today && (
+        <div style={{ padding: "0 16px 4px" }}>
+          <DailyReadout
+            rec={dailyRec}
+            loadFactor={loadFactor}
+            baseline={baseline}
+            date={today}
+            onLogRecovery={() => {
+              // Find today's badge in the recovery strip and open its entry modal
+              // For now this is a no-op hook — the badge tap handles it
+            }}
+          />
+        </div>
+      )}
 
       {/* ── Recovery strip ── */}
       {recoveryDays && recoveryDays.length > 0 && (

@@ -30,11 +30,12 @@ export async function POST(req: NextRequest) {
 
   await upsertRecovery(planId, {
     date,
-    hrvMs: num(body.hrvMs),
-    rhrBpm: num(body.rhrBpm),
+    hrvMs:      num(body.hrvMs),
+    rhrBpm:     num(body.rhrBpm),
     sleepHours: num(body.sleepHours),
     sleepScore: num(body.sleepScore),
-    readiness: num(body.readiness),
+    readiness:  num(body.readiness),
+    lifeStress: num(body.lifeStress),
     source: (body.source as "shortcuts" | "manual" | "export-tool") ?? "shortcuts",
     note: (body.note as string | undefined) || undefined,
   });

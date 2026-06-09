@@ -279,6 +279,7 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
   const [rhr, setRhr] = useState(existing?.rhrBpm?.toString() ?? "");
   const [sleep, setSleep] = useState(existing?.sleepHours?.toString() ?? "");
   const [sleepScore, setSleepScore] = useState(existing?.sleepScore?.toString() ?? "");
+  const [lifeStress, setLifeStress] = useState<number | null>(existing?.lifeStress ?? null);
   const [note, setNote] = useState(existing?.note ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -291,6 +292,7 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
       rhrBpm: rhr ? parseFloat(rhr) : undefined,
       sleepHours: sleep ? parseFloat(sleep) : undefined,
       sleepScore: sleepScore ? parseInt(sleepScore) : undefined,
+      lifeStress: lifeStress ?? undefined,
       source: "manual",
       note: note.trim() || undefined,
     });
@@ -320,6 +322,43 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
           <EntryField label="Sleep score" value={sleepScore} onChange={setSleepScore} placeholder="85" />
         </div>
 
+        {/* Life stress picker */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 8 }}>
+            LIFE STRESS
+            {lifeStress && (
+              <span style={{ marginLeft: 8, fontWeight: 400, color: lifeStressColor(lifeStress) }}>
+                {lifeStress}/10 — {lifeStressLabel(lifeStress)}
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 5 }}>
+            {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+              <button
+                key={n}
+                onClick={() => setLifeStress(lifeStress === n ? null : n)}
+                style={{
+                  flex: 1,
+                  height: 34,
+                  borderRadius: 6,
+                  border: `1px solid ${lifeStress === n ? lifeStressColor(n) : "var(--border)"}`,
+                  background: lifeStress === n ? lifeStressColor(n) + "33" : "var(--surface-2)",
+                  color: lifeStress === n ? lifeStressColor(n) : "var(--text-muted)",
+                  fontSize: 12,
+                  fontWeight: lifeStress === n ? 700 : 400,
+                  cursor: "pointer",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", marginTop: 4, opacity: 0.6 }}>
+            <span>Low</span><span>Moderate</span><span>High</span>
+          </div>
+        </div>
+
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>NOTE</div>
           <textarea
@@ -344,6 +383,19 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
       </div>
     </div>
   );
+}
+
+function lifeStressColor(n: number): string {
+  if (n <= 3) return "#22c55e";
+  if (n <= 6) return "#f59e0b";
+  return "#ef4444";
+}
+
+function lifeStressLabel(n: number): string {
+  if (n <= 3) return "low";
+  if (n <= 6) return "moderate";
+  if (n <= 8) return "high";
+  return "very high";
 }
 
 function EntryField({ label, value, onChange, placeholder, step }: {

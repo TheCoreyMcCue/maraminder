@@ -3,6 +3,9 @@ import { getPlan } from "@/lib/planOps";
 import { getRecoveryWithHistory } from "@/lib/recoveryOps";
 import { enrichDay } from "@/lib/recovery";
 import { getActivePlanId } from "@/lib/activePlan";
+import { getPersonalBaseline } from "@/lib/baselineOps";
+import { getDailyLoadRec } from "@/lib/loadRecommendation";
+import { computeLoadFactor } from "@/lib/loadFactor";
 import WeekView from "@/components/WeekView";
 
 export default async function Home() {
@@ -31,12 +34,26 @@ export default async function Home() {
     .filter((s) => s.weekNo === currentWeek.weekNo)
     .sort((a, b) => a.order - b.order);
 
-  const allRecovery = await getRecoveryWithHistory(currentWeek.dateStart, planId);
+  const [allRecovery, baseline] = await Promise.all([
+    getRecoveryWithHistory(currentWeek.dateStart, planId),
+    getPersonalBaseline(),
+  ]);
+
   const recoveryDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(currentWeek.dateStart + "T12:00:00");
     d.setDate(d.getDate() + i);
     return enrichDay(allRecovery, d.toISOString().slice(0, 10));
   });
+
+  // Daily readout for today
+  const todayRecovery = allRecovery.find((r) => r.date === today) ?? null;
+  const todaySessions = weekSessions.filter((s) => s.date === today);
+  const recent3 = allRecovery
+    .filter((r) => r.date < today)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3);
+  const dailyRec = getDailyLoadRec(todayRecovery, baseline, todaySessions, recent3);
+  const loadFactor = computeLoadFactor(today, plan.sessions, allRecovery, baseline);
 
   return (
     <WeekView
@@ -48,6 +65,9 @@ export default async function Home() {
       recoveryDays={recoveryDays}
       today={today}
       planId={planId}
+      dailyRec={dailyRec}
+      loadFactor={loadFactor}
+      baseline={baseline}
     />
   );
 }
