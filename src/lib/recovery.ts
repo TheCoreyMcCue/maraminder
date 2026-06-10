@@ -5,6 +5,7 @@ import type {
   Deviation,
   DailyRecovery,
   WeeklyRecovery,
+  PersonalBaseline,
 } from "./types";
 
 // Configurable thresholds
@@ -91,11 +92,38 @@ function hasMildDecline(readings: RecoveryReading[], date: string): boolean {
   return d2.hrvMs > d1.hrvMs && d1.hrvMs > d0.hrvMs;
 }
 
+// ── Status from personal baseline (no rolling window needed) ─
+// This is the single source of truth for the strip dot AND the card band.
+
+export function dailyStatusVsPersonalBaseline(
+  reading: RecoveryReading | null,
+  pb: PersonalBaseline
+): RecoveryStatus {
+  if (!reading) return "unknown";
+  const hrvZ = reading.hrvMs != null ? (reading.hrvMs - pb.hrv.mean) / pb.hrv.sd : null;
+  const rhrZ = reading.rhrBpm != null ? (reading.rhrBpm - pb.rhr.mean) / pb.rhr.sd : null;
+  let breaches = 0;
+  if (hrvZ !== null && hrvZ <= T.hrvZAmber) breaches++;
+  if (rhrZ !== null && rhrZ >= T.rhrZAmber) breaches++;
+  if (reading.sleepHours != null && reading.sleepHours < T.sleepAmberH) breaches++;
+  if (breaches >= 2) return "red";
+  if (breaches >= 1) return "amber";
+  return "green";
+}
+
 // ── Per-day enriched object ───────────────────────────────
 
-export function enrichDay(readings: RecoveryReading[], date: string): DailyRecovery {
+// personalBaseline makes the strip dot and card band agree — both use the
+// personal baseline for status, not an unreliable sparse rolling window.
+export function enrichDay(
+  readings: RecoveryReading[],
+  date: string,
+  personalBaseline?: PersonalBaseline
+): DailyRecovery {
   const reading = readings.find((r) => r.date === date) ?? null;
-  const status = dailyStatus(readings, date);
+  const status = personalBaseline
+    ? dailyStatusVsPersonalBaseline(reading, personalBaseline)
+    : dailyStatus(readings, date);
 
   const hrv7 = reading?.hrvMs ? baseline(readings, "hrvMs", date, 7) : null;
   const hrv30 = reading?.hrvMs ? baseline(readings, "hrvMs", date, 30) : null;

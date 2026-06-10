@@ -16,32 +16,35 @@ const MIN_LOGGED_FOR_FULL_ACWR = 10;
 // Average RPE used to convert typical weekly hours → load units
 const TYPICAL_RPE = 4.5;
 
-// Component weights — must sum to 100
-const W = { training: 30, fatigue: 25, recovery: 25, life: 20 } as const;
+// Component weights — must sum to 100.
+// Recovery and training are the dominant physiological signals.
+// Fatigue and life stress are secondary modifiers (10 pts max each),
+// so a 3/10 leg-fatigue score contributes ~3, not 7–8.
+const W = { training: 40, recovery: 40, fatigue: 10, life: 10 } as const;
 
 export interface LoadFactorResult {
   score: number;          // 0–100
   level: LoadLevel;
-  restBonus: number;      // points reduced by deliberate rest (0–4)
+  restBonus: number;
   training: {
     acute: number;
     chronic: number;
     ratio: number;
-    score: number;        // 0–30
+    score: number;        // 0–40
     insufficient: boolean;
   };
   legFatigue: {
-    value: number | null; // today's logged 1–10
-    score: number;        // 0–25
+    value: number | null;
+    score: number;        // 0–10
   };
   recoveryDeficit: {
     hrvZ: number | null;
     rhrZ: number | null;
-    score: number;        // 0–25
+    score: number;        // 0–40
   };
   lifeStress: {
     avg: number | null;
-    score: number;        // 0–20
+    score: number;        // 0–10
   };
   headline: string;
   insight: string;
@@ -66,7 +69,7 @@ export function computeLoadFactor(
     : acute / chronic;
   const trainingScore = insufficient
     ? 0
-    : Math.round(Math.min(W.training, (acwr / 1.5) * W.training));
+    : Math.round(Math.min(W.training, (acwr / 1.5) * W.training)); // 0–40
 
   // ── Leg fatigue (today's reading, direct signal) ──
   const todayFatigue = readings.find((r) => r.date === today)?.legFatigue ?? null;
@@ -122,7 +125,8 @@ export function computeLoadFactor(
     legFatigue:      { value: todayFatigue, score: fatigueScore },
     recoveryDeficit: { hrvZ, rhrZ, score: recoveryScore },
     lifeStress:      { avg: lifeAvg != null ? Math.round(lifeAvg * 10) / 10 : null, score: lifeScore },
-    ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient, restTakenToday),
+    ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient, restTakenToday,
+      { trainingScore, fatigueScore, recoveryScore, lifeScore }),
   };
 }
 
@@ -209,9 +213,15 @@ function buildCopy(
   rhrZ: number | null,
   score: number,
   insufficient: boolean,
-  restTaken: boolean = false
+  restTaken: boolean = false,
+  components?: { trainingScore: number; fatigueScore: number; recoveryScore: number; lifeScore: number }
 ): { headline: string; insight: string } {
   const parts: string[] = [];
+
+  // Dominant driver headline — avoids "reduce load" when training is light
+  const dominant = components
+    ? Object.entries(components).sort((a, b) => b[1] - a[1])[0][0]
+    : null;
 
   if (insufficient) {
     parts.push(`training history building (need ${MIN_LOGGED_FOR_FULL_ACWR} logged sessions for full ACWR)`);
@@ -246,15 +256,38 @@ function buildCopy(
 
   if (restTaken) parts.push("full rest taken today — recovery investment applied ✦");
 
-  const headlines: Record<LoadLevel, string> = {
-    green:    "Body load manageable",
-    amber:    "Load building — stay intentional",
-    red:      "High load — recovery is the priority",
-    critical: "Critical load — pull back now",
+  // Headline driven by dominant component so it always matches what's actually happening
+  const dominantHeadline = (): string => {
+    if (level === "green") return acwr > 1.0 ? "Strong adaptation signal" : "Body load manageable";
+    if (level === "critical") return "Critical load — pull back now";
+    // amber / red: pick headline based on what's actually driving the score
+    if (dominant === "recoveryScore") {
+      return level === "red"
+        ? "Recovery down — easy day only"
+        : "Recovery dip — keep today easy";
+    }
+    if (dominant === "trainingScore") {
+      return level === "red"
+        ? "Load too high — back off"
+        : "Load building — stay intentional";
+    }
+    if (dominant === "fatigueScore") {
+      return level === "red"
+        ? "Heavy legs — rest or very easy"
+        : "Legs reporting fatigue — protect intensity";
+    }
+    if (dominant === "lifeScore") {
+      return level === "red"
+        ? "Life stress high — guard recovery"
+        : "Life stress elevated — stay intentional";
+    }
+    return level === "red" ? "High load — recovery is the priority" : "Load building — stay intentional";
   };
 
+  const headline = restTaken ? `${dominantHeadline()} · rest day ✦` : dominantHeadline();
+
   return {
-    headline: restTaken ? `${headlines[level]} · rest day ✦` : headlines[level],
+    headline,
     insight: parts.join(". ") + ".",
   };
 }

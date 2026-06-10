@@ -78,10 +78,10 @@ export function computeWeeklyAnalysis(
     for (const s of wSessions) {
       if (s.status === "skipped") continue;
       plannedLoad += plannedSessionLoad(s);
-      plannedKm += s.targetDistanceKm ?? 0;
+      if (s.category !== "bike") plannedKm += s.targetDistanceKm ?? 0;
       if (s.status === "done" && s.actual) {
         actualLoad += sessionLoad(s, ftpW);
-        actualKm += s.actual.distanceKm ?? 0;
+        if (s.category !== "bike") actualKm += s.actual.distanceKm ?? 0;
       }
     }
 

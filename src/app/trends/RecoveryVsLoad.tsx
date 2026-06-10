@@ -21,6 +21,9 @@ const ANN_COLOR: Record<string, string> = {
 
 export default function RecoveryVsLoad({ weeks }: { weeks: WeekAnalysis[] }) {
   const [visible, setVisible] = useState<Set<SeriesKey>>(new Set(["load", "lifeStress", "recovery"]));
+  const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
+  const [pinnedWeek, setPinnedWeek] = useState<number | null>(null);
+  const activeWeekNo = pinnedWeek ?? hoveredWeek;
   const toggle = (k: SeriesKey) => setVisible((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const show = (k: SeriesKey) => visible.has(k);
 
@@ -178,11 +181,35 @@ export default function RecoveryVsLoad({ weeks }: { weeks: WeekAnalysis[] }) {
                   : w.recoveryIndex! > -15 ? "#f59e0b" : "#ef4444";
                 return (
                   <circle key={w.weekNo}
-                    cx={xp(w.weekNo)} cy={yRec(w.recoveryIndex!)} r={4}
-                    fill={recColor} stroke="#22c55e" strokeWidth={1.5} />
+                    cx={xp(w.weekNo)} cy={yRec(w.recoveryIndex!)}
+                    r={activeWeekNo === w.weekNo ? 6 : 4}
+                    fill={recColor} stroke="#22c55e" strokeWidth={1.5}
+                    style={{ cursor: "pointer", transition: "r 0.1s" }}
+                    onMouseEnter={() => setHoveredWeek(w.weekNo)}
+                    onMouseLeave={() => setHoveredWeek(null)}
+                    onClick={(e) => { e.stopPropagation(); setPinnedWeek(pinnedWeek === w.weekNo ? null : w.weekNo); }}
+                  />
                 );
               })}
           </>
+        )}
+
+        {/* Invisible hit-target columns — makes bars and empty weeks tappable */}
+        {weeks.map((w) => (
+          <rect key={`hit-${w.weekNo}`}
+            x={xp(w.weekNo) - barW * 1.5} y={PAD.top}
+            width={barW * 3} height={CH}
+            fill="transparent" style={{ cursor: "pointer" }}
+            onMouseEnter={() => setHoveredWeek(w.weekNo)}
+            onMouseLeave={() => setHoveredWeek(null)}
+            onClick={(e) => { e.stopPropagation(); setPinnedWeek(pinnedWeek === w.weekNo ? null : w.weekNo); }}
+          />
+        ))}
+
+        {/* Backdrop to unpin tooltip */}
+        {pinnedWeek !== null && (
+          <rect x={0} y={0} width={VW} height={VH} fill="transparent"
+            onClick={() => setPinnedWeek(null)} style={{ cursor: "default" }} />
         )}
 
         {/* Status dots above bars (adapting/watch/recovering) */}
@@ -214,6 +241,49 @@ export default function RecoveryVsLoad({ weeks }: { weeks: WeekAnalysis[] }) {
             </text>
           ))
         )}
+
+        {/* Tooltip */}
+        {activeWeekNo !== null && (() => {
+          const w = weeks.find((x) => x.weekNo === activeWeekNo);
+          if (!w) return null;
+          const cx = xp(w.weekNo);
+          const TW = 150, TH = 90;
+          const tx = cx + TW > PAD.left + CW ? cx - TW - 6 : cx + 10;
+          const ty = PAD.top + 4;
+          const recColor = w.recoveryIndex == null ? "#888896"
+            : w.recoveryIndex >= 0 ? "#22c55e"
+            : w.recoveryIndex > -15 ? "#f59e0b" : "#ef4444";
+          const statusLabel: Record<string, string> = { adapting: "Adapting ↑", watch: "Watch ⚠", recovering: "Recovering ↓", neutral: "—" };
+          const row3y = w.lifeStressLoad > 0 ? ty + 57 : ty + 43;
+          const row4y = w.lifeStressLoad > 0 ? ty + 71 : ty + 57;
+          return (
+            <g style={{ pointerEvents: "none" }}>
+              <rect x={tx} y={ty} width={TW} height={TH} rx={6}
+                fill="#1a1a1f" stroke="#2e2e36" strokeWidth={1} />
+              <text x={tx + 10} y={ty + 14} fill="#888896" fontSize={9}>{w.phase} · W{w.weekNo}</text>
+              <text x={tx + 10} y={ty + 29} fill="#6b7280" fontSize={10} fontWeight={600}>
+                {`Load: ${w.actualLoad > 0 ? w.actualLoad : "—"}${w.plannedLoad > 0 ? ` / ${w.plannedLoad}` : ""}`}
+              </text>
+              {w.lifeStressLoad > 0 && (
+                <text x={tx + 10} y={ty + 43} fill="#f97316" fontSize={9}>+ {w.lifeStressLoad} life</text>
+              )}
+              <text x={tx + 10} y={row3y} fill={recColor} fontSize={10} fontWeight={600}>
+                {`Recovery: ${w.recoveryIndex != null ? `${w.recoveryIndex > 0 ? "+" : ""}${w.recoveryIndex.toFixed(1)}%` : "no data"}`}
+              </text>
+              {w.status !== "neutral" && (
+                <text x={tx + 10} y={row4y}
+                  fill={STATUS_COLOR[w.status] || "#888896"} fontSize={9}>
+                  {statusLabel[w.status] ?? w.status}
+                </text>
+              )}
+              {w.recoveryDays > 0 && (
+                <text x={tx + TW - 8} y={ty + TH - 8} textAnchor="end" fill="#888896" fontSize={7.5} opacity={0.6}>
+                  {w.recoveryDays}d data
+                </text>
+              )}
+            </g>
+          );
+        })()}
       </svg>
 
       {/* Verdict chips */}

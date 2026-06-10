@@ -14,7 +14,7 @@ export interface DailyLoadRec {
   rationale: string;
   sessionAdvice: SessionAdvice[];
   hrv?:   { value: number; devPct: number; z: number };
-  rhr?:   { value: number; devBpm: number; z: number };
+  rhr?:   { value: number; devBpm: number; devPct: number; z: number };
   sleep?: { hours: number; ok: boolean };
 }
 
@@ -80,7 +80,12 @@ export function getDailyLoadRec(
       ? { value: reading.hrvMs, devPct: ((reading.hrvMs - baseline.hrv.mean) / baseline.hrv.mean) * 100, z: hrvZ }
       : undefined,
     rhr: reading.rhrBpm != null && rhrZ != null
-      ? { value: reading.rhrBpm, devBpm: reading.rhrBpm - baseline.rhr.mean, z: rhrZ }
+      ? {
+          value: reading.rhrBpm,
+          devBpm: reading.rhrBpm - baseline.rhr.mean,
+          devPct: ((reading.rhrBpm - baseline.rhr.mean) / baseline.rhr.mean) * 100,
+          z: rhrZ,
+        }
       : undefined,
     sleep: sleepHours != null
       ? { hours: sleepHours, ok: sleepOk ?? true }
@@ -112,11 +117,17 @@ function buildCopy(
   sleepHours: number | null,
   trend: boolean
 ): { headline: string; rationale: string } {
-  const hrvStr = reading.hrvMs != null
-    ? `HRV ${reading.hrvMs}ms (${fmtZ(hrvZ, true)} vs baseline)`
+  // Actual % deviation — (value − mean) / mean × 100. Never use z × 10.
+  const hrvPct = reading.hrvMs != null
+    ? Math.round((reading.hrvMs - baseline.hrv.mean) / baseline.hrv.mean * 100)
     : null;
-  const rhrStr = reading.rhrBpm != null
-    ? `RHR ${reading.rhrBpm}bpm (${fmtBpmDiff(reading.rhrBpm - baseline.rhr.mean)})`
+  const rhrDiff = reading.rhrBpm != null ? reading.rhrBpm - baseline.rhr.mean : null;
+
+  const hrvStr = hrvPct != null
+    ? `HRV ${reading.hrvMs}ms (${hrvPct >= 0 ? "+" : ""}${hrvPct}% vs baseline)`
+    : null;
+  const rhrStr = rhrDiff != null
+    ? `RHR ${reading.rhrBpm}bpm (${fmtBpmDiff(rhrDiff)})`
     : null;
   const sleepStr = sleepHours != null
     ? `${sleepHours.toFixed(1)}h sleep`
@@ -132,27 +143,27 @@ function buildCopy(
   }
 
   if (level === "amber") {
-    const sleepOnly = sleepHours != null && sleepHours < baseline.sleepTargetHours - 1
-      && (hrvZ == null || hrvZ > -0.5) && (rhrZ == null || rhrZ < 0.5);
+    const hrvDriven  = hrvZ != null && hrvZ <= -0.5;
+    const sleepDriven = sleepHours != null && sleepHours < baseline.sleepTargetHours - 1
+      && !hrvDriven && (rhrZ == null || rhrZ < 0.5);
+    const legsDriven = (reading.legFatigue ?? 0) >= 7;
+    const headline = sleepDriven     ? "Poor sleep — reduce intensity"
+      : hrvDriven                    ? "Recovery dip — keep today easy"
+      : legsDriven                   ? "Heavy legs — protect intensity"
+      : "Mild strain — take the conservative end of each zone";
     return {
-      headline: sleepOnly ? "Poor sleep — reduce intensity" : "Mild fatigue — reduce load",
-      rationale: `${dataLine}. ${trend ? "Two-day downward trend. " : ""}Proceed but take the conservative end of every zone.`,
+      headline,
+      rationale: `${dataLine}. ${trend ? "Two-day downward trend. " : ""}${headline.split("—")[1]?.trim() ?? "Proceed carefully"}.`,
     };
   }
 
   // red
   return {
-    headline: "Significant fatigue — easy day",
+    headline: "Significant fatigue — easy day only",
     rationale: `${dataLine}. ${trend ? "Multi-day decline — accumulated load. " : "Both HRV and RHR are off together. "}Protect quality sessions; don't compound the stress.`,
   };
 }
 
-function fmtZ(z: number | null, higherBetter: boolean): string {
-  if (z == null) return "—";
-  const pct = Math.round(Math.abs(z * 10));
-  const direction = higherBetter ? (z >= 0 ? "above" : "below") : (z >= 0 ? "above" : "below");
-  return `${pct > 0 ? `~${pct}% ` : "≈ "}${direction} baseline`;
-}
 
 function fmtBpmDiff(diff: number): string {
   if (Math.abs(diff) < 1) return "at baseline";

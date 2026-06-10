@@ -42,7 +42,7 @@ export default async function Home() {
   const recoveryDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(currentWeek.dateStart + "T12:00:00");
     d.setDate(d.getDate() + i);
-    return enrichDay(allRecovery, d.toISOString().slice(0, 10));
+    return enrichDay(allRecovery, d.toISOString().slice(0, 10), baseline);
   });
 
   // Daily readout for today

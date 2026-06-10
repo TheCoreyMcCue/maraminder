@@ -69,6 +69,10 @@ export default function MPHrChart({
   zoneLabel = "MP",
 }: MPHrChartProps) {
   const [visible, setVisible] = useState<Set<SeriesKey>>(new Set(ALL_SERIES));
+  // hover = show while mouse is over; pinned = stays open after click/tap
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
+  const activeIdx = pinnedIdx ?? hoveredIdx;
 
   function toggle(key: SeriesKey) {
     setVisible((prev) => {
@@ -209,24 +213,46 @@ export default function MPHrChart({
             strokeLinecap="round" strokeLinejoin="round" />
         )}
 
+        {/* Backdrop — click anywhere to unpin tooltip */}
+        {pinnedIdx !== null && (
+          <rect x={0} y={0} width={VW} height={VH} fill="transparent"
+            onClick={() => setPinnedIdx(null)} style={{ cursor: "default" }} />
+        )}
+
         {/* Data points + x-axis labels */}
         {data.map((d, i) => (
           <g key={i}>
             {show("hr") && (
               <>
-                <circle cx={xp(d.weekNo)} cy={yhr(d.avgHr)} r={4.5}
+                <circle cx={xp(d.weekNo)} cy={yhr(d.avgHr)}
+                  r={activeIdx === i ? 6.5 : 4.5}
                   fill={d.isSegment ? hrColor : "var(--surface)"}
-                  stroke={hrColor} strokeWidth={2} />
-                <text x={xp(d.weekNo)} y={yhr(d.avgHr) - 9} textAnchor="middle"
-                  fill="#e8e8ed" fontSize={8.5} fontWeight={600}>{d.avgHr}</text>
+                  stroke={hrColor} strokeWidth={2}
+                  style={{ cursor: "pointer", transition: "r 0.1s" }}
+                  onMouseEnter={() => setHoveredIdx(i)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  onClick={(e) => { e.stopPropagation(); setPinnedIdx(pinnedIdx === i ? null : i); }}
+                />
+                {activeIdx !== i && (
+                  <text x={xp(d.weekNo)} y={yhr(d.avgHr) - 9} textAnchor="middle"
+                    fill="#e8e8ed" fontSize={8.5} fontWeight={600}>{d.avgHr}</text>
+                )}
               </>
             )}
             {show("pace") && d.pace && (
               <>
-                <circle cx={xp(d.weekNo)} cy={ypace(paceToSec(d.pace))} r={4}
-                  fill="#22c55e" stroke="#22c55e" strokeWidth={1.5} />
-                <text x={xp(d.weekNo)} y={ypace(paceToSec(d.pace)) + 11} textAnchor="middle"
-                  fill="#22c55e" fontSize={8} fontWeight={600}>{d.pace}</text>
+                <circle cx={xp(d.weekNo)} cy={ypace(paceToSec(d.pace))}
+                  r={activeIdx === i ? 6 : 4}
+                  fill="#22c55e" stroke="#22c55e" strokeWidth={1.5}
+                  style={{ cursor: "pointer", transition: "r 0.1s" }}
+                  onMouseEnter={() => setHoveredIdx(i)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  onClick={(e) => { e.stopPropagation(); setPinnedIdx(pinnedIdx === i ? null : i); }}
+                />
+                {activeIdx !== i && (
+                  <text x={xp(d.weekNo)} y={ypace(paceToSec(d.pace)) + 11} textAnchor="middle"
+                    fill="#22c55e" fontSize={8} fontWeight={600}>{d.pace}</text>
+                )}
               </>
             )}
             <text x={xp(d.weekNo)} y={PAD.top + CH + 12} textAnchor="middle"
@@ -235,6 +261,46 @@ export default function MPHrChart({
               fill="#888896" fontSize={7.5} opacity={0.65}>{fmtDate(d.date)}</text>
           </g>
         ))}
+
+        {/* Tooltip for active point */}
+        {activeIdx !== null && (() => {
+          const d = data[activeIdx];
+          const cx = xp(d.weekNo);
+          const cy = show("hr") ? yhr(d.avgHr) : (d.pace ? ypace(paceToSec(d.pace)) : PAD.top);
+          const TW = 138, TH = d.pace ? 78 : 62;
+          const tx = cx + TW > PAD.left + CW ? cx - TW - 8 : cx + 10;
+          const ty = Math.max(PAD.top, Math.min(cy - TH / 2, PAD.top + CH - TH));
+          return (
+            <g style={{ pointerEvents: "none" }}>
+              <rect x={tx} y={ty} width={TW} height={TH} rx={6}
+                fill="#1a1a1f" stroke="#2e2e36" strokeWidth={1} />
+              {/* Header */}
+              <text x={tx + 10} y={ty + 14} fill="#888896" fontSize={9}>
+                W{d.weekNo} · {fmtDate(d.date)}
+              </text>
+              {/* HR row */}
+              {show("hr") && (
+                <>
+                  <text x={tx + 10} y={ty + 30} fill={hrColor} fontSize={11} fontWeight={700}>
+                    {d.avgHr} bpm
+                  </text>
+                  <text x={tx + 10} y={ty + 44} fill="#888896" fontSize={8.5}>
+                    {zoneLabel} target: {targetLow}–{targetHigh} bpm
+                  </text>
+                  <text x={tx + TW - 10} y={ty + 30} textAnchor="end" fill="#888896" fontSize={8}>
+                    {d.isSegment ? "block HR ✓" : "run avg"}
+                  </text>
+                </>
+              )}
+              {/* Pace row */}
+              {show("pace") && d.pace && (
+                <text x={tx + 10} y={ty + (show("hr") ? 60 : 30)} fill="#22c55e" fontSize={10} fontWeight={600}>
+                  {d.pace}/km
+                </text>
+              )}
+            </g>
+          );
+        })()}
 
         {/* Target zone label */}
         <text x={PAD.left + 4} y={yhr((targetLow + targetHigh) / 2)}

@@ -51,15 +51,20 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
   const isCycling = session.category === "bike" || session.category === "brick";
   const showDecoupling = ["long", "mp"].includes(session.category);
 
-  // Quality zones: zoneRefs → category default → existing logged data (in that priority)
+  // Quality zones to show in the block section.
+  // Anchor sessions show all 4 quality zones — they often have multiple effort layers
+  // (e.g. an easy run with 2km @ MP: zoneRefs only has S but user ran MP too).
+  // Fill sessions use the narrower zoneRefs / category / existing-data fallback.
   const sessionQualityZones = (() => {
+    if (session.type === "anchor" && !["rest", "bike"].includes(session.category)) {
+      return QUALITY_ZONES;
+    }
     const fromRefs = session.zoneRefs.filter((z): z is ZoneKey =>
       QUALITY_ZONES.includes(z as ZoneKey)
     );
     if (fromRefs.length > 0) return fromRefs;
     const fromCat = (CATEGORY_QUALITY_ZONES[session.category] ?? []) as ZoneKey[];
     if (fromCat.length > 0) return fromCat;
-    // If editing a previously logged session that had quality block data, show those zones
     const fromExisting = [
       ...Object.keys(existing?.segmentHr ?? {}),
       ...Object.keys(existing?.segmentPace ?? {}),
@@ -133,12 +138,12 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
         {/* Distance + duration */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
           <Field label="DISTANCE (km)">
-            <input type="number" step="0.1" inputMode="decimal" value={dist}
+            <input type="text" inputMode="decimal" value={dist}
               onChange={(e) => setDist(e.target.value)}
               style={inputStyle} placeholder={session.targetDistanceKm?.toString() ?? "0"} />
           </Field>
           <Field label="DURATION (min)">
-            <input type="number" step="0.1" inputMode="decimal" value={dur}
+            <input type="text" inputMode="decimal" value={dur}
               onChange={(e) => setDur(e.target.value)}
               style={inputStyle} placeholder={session.targetDurationMin?.toString() ?? "0"} />
           </Field>
@@ -208,7 +213,7 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
         {/* Conditions */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <Field label="TEMP (°C)">
-            <input type="number" step="0.5" inputMode="decimal" value={tempC} onChange={(e) => setTempC(e.target.value)}
+            <input type="text" inputMode="decimal" value={tempC} onChange={(e) => setTempC(e.target.value)}
               style={inputStyle} placeholder="—" />
           </Field>
           <Field label="WIND">

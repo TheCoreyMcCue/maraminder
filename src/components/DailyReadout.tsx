@@ -78,7 +78,7 @@ export default function DailyReadout({ rec, loadFactor, baseline, date, onLogRec
           {rec.level !== "unknown" && (
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, display: "flex", gap: 12, flexWrap: "wrap" }}>
               {rec.hrv   && <MetricChip label="HRV"   value={`${rec.hrv.value}ms`}    dev={rec.hrv.devPct}   higherBetter color={color} />}
-              {rec.rhr   && <MetricChip label="RHR"   value={`${rec.rhr.value}bpm`}   dev={-rec.rhr.devBpm}  higherBetter color={color} />}
+              {rec.rhr   && <MetricChip label="RHR"   value={`${rec.rhr.value}bpm`}   dev={rec.rhr.devPct}   higherBetter={false} color={color} />}
               {rec.sleep && <MetricChip label="Sleep" value={`${rec.sleep.hours.toFixed(1)}h`} dev={null} ok={rec.sleep.ok} color={color} />}
             </div>
           )}
@@ -163,30 +163,32 @@ function LoadFactorGauge({ lf }: { lf: LoadFactorResult }) {
     {
       label: "Training",
       score: lf.training.score,
-      max: 30,
+      max: 40,
       detail: lf.training.insufficient
         ? "building history…"
         : `ACWR ${lf.training.ratio.toFixed(2)}`,
       muted: lf.training.insufficient,
     },
     {
+      label: "Recovery",
+      score: lf.recoveryDeficit.score,
+      max: 40,
+      detail: lf.recoveryDeficit.hrvZ != null
+        ? `HRV ${lf.recoveryDeficit.hrvZ.toFixed(1)}σ`
+        : "no data",
+      muted: false,
+    },
+    {
       label: "Leg fatigue",
       score: lf.legFatigue.score,
-      max: 25,
+      max: 10,
       detail: lf.legFatigue.value != null ? `${lf.legFatigue.value}/10` : "not logged",
       muted: lf.legFatigue.value == null,
     },
     {
-      label: "Recovery",
-      score: lf.recoveryDeficit.score,
-      max: 25,
-      detail: lf.recoveryDeficit.hrvZ != null ? `HRV z=${lf.recoveryDeficit.hrvZ.toFixed(1)}` : "no data",
-      muted: false,
-    },
-    {
       label: "Life",
       score: lf.lifeStress.score,
-      max: 20,
+      max: 10,
       detail: lf.lifeStress.avg != null ? `${lf.lifeStress.avg.toFixed(1)}/10` : "not logged",
       muted: false,
     },

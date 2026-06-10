@@ -454,8 +454,8 @@ function EntryField({ label, value, onChange, placeholder, step }: {
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{label}</span>
       <input
-        type="number"
-        step={step ?? "1"}
+        type={step === "0.1" ? "text" : "number"}
+        step={step !== "0.1" ? (step ?? "1") : undefined}
         inputMode={step === "0.1" ? "decimal" : "numeric"}
         value={value}
         onChange={(e) => onChange(e.target.value)}

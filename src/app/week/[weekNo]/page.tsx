@@ -38,7 +38,7 @@ export default async function WeekPage({ params }: Props) {
   const recoveryDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(week.dateStart + "T12:00:00");
     d.setDate(d.getDate() + i);
-    return enrichDay(allRecovery, d.toISOString().slice(0, 10));
+    return enrichDay(allRecovery, d.toISOString().slice(0, 10), baseline);
   });
 
   // Only compute daily readout when viewing the current week

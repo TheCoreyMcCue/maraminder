@@ -210,7 +210,7 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo, pla
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>TYPICAL WEEKLY HOURS</span>
-            <input type="number" step="0.5" inputMode="decimal" value={typicalHours} onChange={(e) => setTypicalHours(e.target.value)}
+            <input type="text" inputMode="decimal" value={typicalHours} onChange={(e) => setTypicalHours(e.target.value)}
               style={inputStyle} placeholder="e.g. 8" />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>

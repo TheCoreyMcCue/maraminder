@@ -246,20 +246,31 @@ function buildZoneHistory(
   logged: ReturnType<typeof Array.prototype.filter>,
   zoneKey: "MP" | "T" | "I" | "S"
 ): ZoneHistoryPoint[] {
-  return (logged as typeof logged)
-    .filter((s: { zoneRefs: string[]; actual: { segmentHr?: Record<string, number>; avgHr?: number } | null }) =>
-      s.zoneRefs.includes(zoneKey) &&
-      (s.actual?.segmentHr?.[zoneKey] ?? s.actual?.avgHr)
-    )
-    .map((s: {
-      date: string; weekNo: number;
-      actual: { segmentHr?: Record<string, number>; segmentPace?: Record<string, string>; avgHr?: number; avgPacePerKm?: string } | null;
-    }) => {
-      const segHr = s.actual!.segmentHr?.[zoneKey];
-      const segPace = s.actual!.segmentPace?.[zoneKey] ?? s.actual!.avgPacePerKm;
-      return { date: s.date, avgHr: segHr ?? s.actual!.avgHr!, pace: segPace, weekNo: s.weekNo, isSegment: !!segHr };
+  type S = {
+    date: string; weekNo: number; zoneRefs: string[];
+    actual: { segmentHr?: Record<string, number>; segmentPace?: Record<string, string>; avgHr?: number; avgPacePerKm?: string } | null;
+  };
+  return (logged as S[])
+    .filter((s) => {
+      // Include if the user explicitly logged segment data for this zone (regardless of zoneRefs),
+      // OR if zoneRefs includes the zone and overall avgHr was logged (fallback).
+      const hasSegment = s.actual?.segmentHr?.[zoneKey] != null;
+      const isPlannedZone = s.zoneRefs.includes(zoneKey);
+      return hasSegment || (isPlannedZone && s.actual?.avgHr != null);
     })
-    .sort((a: ZoneHistoryPoint, b: ZoneHistoryPoint) => a.date.localeCompare(b.date));
+    .map((s) => {
+      const segHr   = s.actual!.segmentHr?.[zoneKey];
+      const segPace = s.actual!.segmentPace?.[zoneKey]
+        ?? (s.zoneRefs.includes(zoneKey) ? s.actual!.avgPacePerKm : undefined);
+      return {
+        date: s.date,
+        avgHr: segHr ?? s.actual!.avgHr!,
+        pace: segPace,
+        weekNo: s.weekNo,
+        isSegment: !!segHr,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function getTrends(planId?: string): Promise<{
@@ -282,7 +293,7 @@ export async function getTrends(planId?: string): Promise<{
   const weeklyVolume = plan.weeks.map((w) => {
     const wSessions = plan.sessions.filter((s) => s.weekNo === w.weekNo);
     const actualKm = wSessions
-      .filter((s) => s.actual?.distanceKm)
+      .filter((s) => s.category !== "bike" && s.actual?.distanceKm)
       .reduce((sum, s) => sum + (s.actual?.distanceKm || 0), 0);
     return { weekNo: w.weekNo, targetKm: w.volumeTargetKm, actualKm };
   });
