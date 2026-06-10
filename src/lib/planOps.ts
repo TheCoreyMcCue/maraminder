@@ -121,6 +121,33 @@ export async function updateSessionStatus(
   );
 }
 
+// Marks a fill session as a deliberate full rest day — no modal, one tap.
+export async function logRestDay(sessionPk: string, sessionSk: string): Promise<void> {
+  const result = await docClient.send(
+    new GetCommand({ TableName: TABLE_NAME, Key: { pk: sessionPk, sk: sessionSk } })
+  );
+  if (!result.Item) throw new Error("Session not found");
+  const session = result.Item as Session;
+  const planId = sessionPk.replace("PLAN#", "");
+  const plan = await getPlan(planId);
+  const snapshot = buildTargetSnapshot(session, plan.currentZones);
+  const actual: Actual = {
+    distanceKm: 0, durationMin: 0,
+    restTaken: true,
+    notes: "Full rest day taken.",
+    targetSnapshot: snapshot,
+  };
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: { pk: sessionPk, sk: sessionSk },
+      UpdateExpression: "SET #actual = :actual, #status = :status",
+      ExpressionAttributeNames: { "#actual": "actual", "#status": "status" },
+      ExpressionAttributeValues: { ":actual": actual, ":status": "done" },
+    })
+  );
+}
+
 export async function unlogSession(sessionPk: string, sessionSk: string): Promise<void> {
   await docClient.send(
     new UpdateCommand({

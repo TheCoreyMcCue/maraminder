@@ -30,7 +30,8 @@ export interface Actual {
   // Pace logged per quality zone (e.g. { MP: "4:18" }) — actual pace during the blocks
   segmentPace?: Partial<Record<ZoneKey, string>>;
   rpe?: number;
-  avgPowerW?: number;      // avg power in watts (cycling / brick)
+  avgPowerW?: number;
+  restTaken?: boolean;  // true when a fill session was consciously swapped for full rest
   notes?: string;
   stravaUrl?: string;
   // Conditions

@@ -250,6 +250,17 @@ function LoadFactorGauge({ lf }: { lf: LoadFactorResult }) {
         ))}
       </div>
 
+      {/* Rest bonus */}
+      {lf.restBonus > 0 && (
+        <div style={{
+          marginTop: 10, padding: "6px 10px",
+          background: "#22c55e12", border: "1px solid #22c55e30",
+          borderRadius: 6, fontSize: 12, color: "#22c55e",
+        }}>
+          ✦ Full rest taken · −{lf.restBonus} pts recovery bonus applied
+        </div>
+      )}
+
       {/* Insight */}
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.6 }}>
         {lf.insight}

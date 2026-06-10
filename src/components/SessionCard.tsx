@@ -5,7 +5,7 @@ import { formatSessionTarget } from "@/lib/zones";
 import CategoryPill, { categoryColors } from "./CategoryPill";
 import LogModal from "./LogModal";
 import MoveModal from "./MoveModal";
-import { updateSessionStatus, unlogSession } from "@/lib/planOps";
+import { updateSessionStatus, unlogSession, logRestDay } from "@/lib/planOps";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -51,6 +51,15 @@ export default function SessionCard({
     await unlogSession(session.pk, session.sk);
     router.refresh();
   }
+
+  async function handleRestDay() {
+    await logRestDay(session.pk, session.sk);
+    router.refresh();
+  }
+
+  const isRestable = session.type === "fill" &&
+    ["easy", "rest", "bike", "steady"].includes(session.category) &&
+    !isDone && !isSkipped;
 
   function handleMoved(w: Warning[]) {
     setShowMove(false);
@@ -147,21 +156,27 @@ export default function SessionCard({
             borderRadius: 7,
             fontSize: 13,
           }}>
-            <span style={{ color: "#22c55e", fontWeight: 700 }}>Logged: </span>
-            {session.actual.distanceKm}km
-            {session.actual.avgPacePerKm && ` · ${session.actual.avgPacePerKm}/km`}
-            {session.actual.avgPowerW && ` · ${session.actual.avgPowerW}W`}
-            {session.actual.avgPowerW && ftpW && (
-              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                {" "}(IF {(session.actual.avgPowerW / ftpW).toFixed(2)})
-              </span>
-            )}
-            {session.actual.avgHr && ` · ${session.actual.avgHr} bpm`}
-            {session.actual.rpe && ` · RPE ${session.actual.rpe}`}
-            {session.actual.notes && (
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                {session.actual.notes}
-              </div>
+            {session.actual.restTaken ? (
+              <span style={{ color: "#22c55e", fontWeight: 700 }}>✦ Full rest — recovery investment</span>
+            ) : (
+              <>
+                <span style={{ color: "#22c55e", fontWeight: 700 }}>Logged: </span>
+                {session.actual.distanceKm}km
+                {session.actual.avgPacePerKm && ` · ${session.actual.avgPacePerKm}/km`}
+                {session.actual.avgPowerW && ` · ${session.actual.avgPowerW}W`}
+                {session.actual.avgPowerW && ftpW && (
+                  <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                    {" "}(IF {(session.actual.avgPowerW / ftpW).toFixed(2)})
+                  </span>
+                )}
+                {session.actual.avgHr && ` · ${session.actual.avgHr} bpm`}
+                {session.actual.rpe && ` · RPE ${session.actual.rpe}`}
+                {session.actual.notes && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    {session.actual.notes}
+                  </div>
+                )}
+              </>
             )}
             {session.actual.stravaUrl && (
               <a
@@ -193,19 +208,32 @@ export default function SessionCard({
           </div>
         )}
 
-        {/* Action buttons */}
-        <div style={{ display: "flex", gap: 5, marginTop: 12, flexWrap: "wrap" }}>
+        {/* Action buttons
+              done:             2-col  — Edit · Unlog
+              planned restable: 2×2    — Log · Move / Rest day · Skip
+              planned other:    3-col  — Log · Move · Skip          */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: isDone ? "1fr 1fr" : isRestable ? "1fr 1fr" : "repeat(3, 1fr)",
+          gap: 5,
+          marginTop: 12,
+        }}>
           <Btn onClick={() => setShowLog(true)} disabled={isSkipped}>
-            {isDone ? "Edit log" : LOG_LABEL[session.category] ?? "Log"}
+            {isDone ? "Edit" : LOG_LABEL[session.category] ?? "Log"}
           </Btn>
           {isDone ? (
             <Btn onClick={handleUnlog} muted>Unlog</Btn>
           ) : (
-            <Btn onClick={() => setShowMove(true)} disabled={isSkipped}>Move</Btn>
+            <>
+              <Btn onClick={() => setShowMove(true)} disabled={isSkipped}>Move</Btn>
+              {isRestable && (
+                <Btn onClick={handleRestDay} accent>Rest day</Btn>
+              )}
+              <Btn onClick={handleSkip} muted>
+                {isSkipped ? "Restore" : "Skip"}
+              </Btn>
+            </>
           )}
-          <Btn onClick={handleSkip} muted>
-            {isSkipped ? "Restore" : "Skip"}
-          </Btn>
         </div>
       </div>
 
@@ -230,10 +258,11 @@ export default function SessionCard({
   );
 }
 
-function Btn({ onClick, disabled, muted, children }: {
+function Btn({ onClick, disabled, muted, accent, children }: {
   onClick: () => void;
   disabled?: boolean;
   muted?: boolean;
+  accent?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -247,9 +276,9 @@ function Btn({ onClick, disabled, muted, children }: {
         minHeight: 34,
         padding: "0 4px",
         borderRadius: 7,
-        border: "1px solid var(--border)",
-        background: "transparent",
-        color: muted ? "var(--text-muted)" : "var(--text)",
+        border: `1px solid ${accent ? "#22c55e55" : "var(--border)"}`,
+        background: accent ? "#22c55e14" : "transparent",
+        color: accent ? "#22c55e" : muted ? "var(--text-muted)" : "var(--text)",
         fontSize: 12,
         fontWeight: 500,
         cursor: disabled ? "not-allowed" : "pointer",

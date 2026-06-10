@@ -22,6 +22,7 @@ const W = { training: 30, fatigue: 25, recovery: 25, life: 20 } as const;
 export interface LoadFactorResult {
   score: number;          // 0–100
   level: LoadLevel;
+  restBonus: number;      // points reduced by deliberate rest (0–4)
   training: {
     acute: number;
     chronic: number;
@@ -98,7 +99,14 @@ export function computeLoadFactor(
     Math.min(half, Math.max(0,  (rhrZ ?? 0)) / 2 * half)
   );
 
-  const score = Math.min(100, trainingScore + fatigueScore + lifeScore + recoveryScore);
+  // Recovery bonus for deliberate rest days — reduces total score by up to 4 points.
+  // More impactful when already loaded (up to 30% of current deficit).
+  const restTakenToday = sessions.some(
+    (s) => s.date === today && s.actual?.restTaken === true
+  );
+  const restBonus = restTakenToday ? Math.min(4, Math.round(recoveryScore * 0.3) + 1) : 0;
+
+  const score = Math.max(0, Math.min(100, trainingScore + fatigueScore + lifeScore + recoveryScore - restBonus));
 
   const level: LoadLevel =
     score >= 75 ? "critical" :
@@ -109,11 +117,12 @@ export function computeLoadFactor(
   return {
     score,
     level,
+    restBonus,
     training:        { acute, chronic, ratio: Math.round(acwr * 100) / 100, score: trainingScore, insufficient },
     legFatigue:      { value: todayFatigue, score: fatigueScore },
     recoveryDeficit: { hrvZ, rhrZ, score: recoveryScore },
     lifeStress:      { avg: lifeAvg != null ? Math.round(lifeAvg * 10) / 10 : null, score: lifeScore },
-    ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient),
+    ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient, restTakenToday),
   };
 }
 
@@ -199,7 +208,8 @@ function buildCopy(
   hrvZ: number | null,
   rhrZ: number | null,
   score: number,
-  insufficient: boolean
+  insufficient: boolean,
+  restTaken: boolean = false
 ): { headline: string; insight: string } {
   const parts: string[] = [];
 
@@ -234,6 +244,8 @@ function buildCopy(
     else parts.push("recovery metrics look normal");
   }
 
+  if (restTaken) parts.push("full rest taken today — recovery investment applied ✦");
+
   const headlines: Record<LoadLevel, string> = {
     green:    "Body load manageable",
     amber:    "Load building — stay intentional",
@@ -242,7 +254,7 @@ function buildCopy(
   };
 
   return {
-    headline: headlines[level],
+    headline: restTaken ? `${headlines[level]} · rest day ✦` : headlines[level],
     insight: parts.join(". ") + ".",
   };
 }
