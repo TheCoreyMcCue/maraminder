@@ -123,13 +123,20 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
     }
   }
 
-  // Stats
+  // Stats — volume counts running km only (bike is supplemental, not toward run target)
+  const isRunSession = (cat: string) => cat !== "bike";
   const actualKm = optimisticSessions
-    .filter((s) => s.actual?.distanceKm)
+    .filter((s) => isRunSession(s.category) && s.actual?.distanceKm)
     .reduce((sum, s) => sum + (s.actual!.distanceKm || 0), 0);
   const plannedKm = optimisticSessions
-    .filter((s) => s.status !== "skipped" && s.targetDistanceKm)
+    .filter((s) => isRunSession(s.category) && s.status !== "skipped" && s.targetDistanceKm)
     .reduce((sum, s) => sum + (s.targetDistanceKm || 0), 0);
+  const actualBikeKm = optimisticSessions
+    .filter((s) => s.category === "bike" && s.actual?.distanceKm)
+    .reduce((sum, s) => sum + (s.actual!.distanceKm || 0), 0);
+  const totalMinutes = optimisticSessions
+    .filter((s) => s.actual?.durationMin && !s.actual.restTaken)
+    .reduce((sum, s) => sum + (s.actual!.durationMin || 0), 0);
   const doneCount = optimisticSessions.filter((s) => s.status === "done").length;
   const totalCount = optimisticSessions.filter((s) => s.status !== "skipped").length;
   const daysToRace = today
@@ -163,7 +170,16 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
 
           {/* Stats chips */}
           <div style={{ display: "flex", gap: 8 }}>
-            <StatChip label="Volume" value={`${actualKm > 0 ? actualKm.toFixed(1) : plannedKm.toFixed(0)}/${week.volumeTargetKm}km`} />
+            <StatChip
+              label="Run km"
+              value={`${actualKm > 0 ? actualKm.toFixed(1) : plannedKm.toFixed(0)}/${week.volumeTargetKm}`}
+            />
+            {actualBikeKm > 0 && (
+              <StatChip label="Bike km" value={`${actualBikeKm.toFixed(0)}`} color="#0ea5e9" />
+            )}
+            {totalMinutes > 0 && (
+              <StatChip label="Time" value={fmtDuration(totalMinutes)} />
+            )}
             <StatChip label="Done" value={`${doneCount}/${totalCount}`} />
             {daysToRace !== null && daysToRace > 0 && <StatChip label="Race" value={`${daysToRace}d`} color="#f97316" />}
           </div>
@@ -371,6 +387,13 @@ function StatChip({ label, value, color }: { label: string; value: string; color
       <div style={{ fontSize: 14, fontWeight: 700, color: color ?? "var(--text)" }}>{value}</div>
     </div>
   );
+}
+
+function fmtDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 function formatRange(start: string, end: string) {

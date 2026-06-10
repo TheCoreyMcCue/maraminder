@@ -11,7 +11,8 @@
     "create-table": "npx tsx --env-file=.env.local scripts/createTable.ts",
     "patch": "npx tsx --env-file=.env.local scripts/patch-v2.ts",
     "seed-bridge": "npx tsx --env-file=.env.local scripts/seedBridge.ts",
-    "seed-baseline": "npx tsx --env-file=.env.local scripts/seedBaseline.ts"
+    "seed-baseline": "npx tsx --env-file=.env.local scripts/seedBaseline.ts",
+    "icons": "npx tsx scripts/generateIcons.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1063.0",

@@ -220,7 +220,7 @@ export async function recalibrateZones(
 export async function updateSession(
   sessionPk: string,
   sessionSk: string,
-  patch: Partial<Pick<Session, "title" | "structure" | "targetDistanceKm" | "targetDurationMin">>
+  patch: Partial<Pick<Session, "title" | "structure" | "targetDistanceKm" | "targetDurationMin" | "category" | "type" | "zoneRefs">>
 ): Promise<void> {
   const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return;

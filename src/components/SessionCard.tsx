@@ -6,6 +6,7 @@ import CategoryPill, { categoryColors } from "./CategoryPill";
 import LogModal from "./LogModal";
 import MoveModal from "./MoveModal";
 import { updateSessionStatus, unlogSession, logRestDay } from "@/lib/planOps";
+import EditSessionModal from "./EditSessionModal";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -37,6 +38,7 @@ export default function SessionCard({
 }: Props) {
   const [showLog, setShowLog] = useState(false);
   const [showMove, setShowMove] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const router = useRouter();
   const color = categoryColors[session.category];
   const isDone = session.status === "done";
@@ -79,6 +81,7 @@ export default function SessionCard({
         transition: "opacity 0.15s",
         userSelect: "none",
       }}>
+
         {/* Drag handle — top-right grip */}
         {dragListeners && (
           <div
@@ -208,26 +211,26 @@ export default function SessionCard({
           </div>
         )}
 
-        {/* Action buttons
-              done:             2-col  — Edit · Unlog
-              planned restable: 2×2    — Log · Move / Rest day · Skip
-              planned other:    3-col  — Log · Move · Skip          */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: isDone ? "1fr 1fr" : isRestable ? "1fr 1fr" : "repeat(3, 1fr)",
-          gap: 5,
-          marginTop: 12,
-        }}>
-          <Btn onClick={() => setShowLog(true)} disabled={isSkipped}>
-            {isDone ? "Edit" : LOG_LABEL[session.category] ?? "Log"}
-          </Btn>
+        {/* Action buttons — always 2×2 grid
+              logged:   Edit  · Unlog
+              planned:  Log   · Change
+                        Move  · Skip   (or Rest day · Skip for fill sessions) */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 12 }}>
           {isDone ? (
-            <Btn onClick={handleUnlog} muted>Unlog</Btn>
+            <>
+              <Btn onClick={() => setShowLog(true)}>Edit</Btn>
+              <Btn onClick={handleUnlog} muted>Unlog</Btn>
+            </>
           ) : (
             <>
-              <Btn onClick={() => setShowMove(true)} disabled={isSkipped}>Move</Btn>
-              {isRestable && (
+              <Btn onClick={() => setShowLog(true)} disabled={isSkipped}>
+                {LOG_LABEL[session.category] ?? "Log"}
+              </Btn>
+              <Btn onClick={() => setShowEdit(true)} disabled={isSkipped}>Change</Btn>
+              {isRestable ? (
                 <Btn onClick={handleRestDay} accent>Rest day</Btn>
+              ) : (
+                <Btn onClick={() => setShowMove(true)} disabled={isSkipped}>Move</Btn>
               )}
               <Btn onClick={handleSkip} muted>
                 {isSkipped ? "Restore" : "Skip"}
@@ -244,6 +247,12 @@ export default function SessionCard({
           ftpW={ftpW}
           onClose={() => setShowLog(false)}
           onSaved={() => { setShowLog(false); router.refresh(); }}
+        />
+      )}
+      {showEdit && (
+        <EditSessionModal
+          session={session}
+          onClose={() => setShowEdit(false)}
         />
       )}
       {showMove && (
