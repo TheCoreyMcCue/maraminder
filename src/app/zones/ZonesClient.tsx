@@ -1,15 +1,17 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ZoneSet, ZoneKey, Zone } from "@/lib/types";
+import type { ZoneSet, ZoneKey, Zone, PersonalBaseline } from "@/lib/types";
 import { formatPaceRange, formatHrRange } from "@/lib/zones";
 import { recalibrateZones } from "@/lib/planOps";
+import { savePersonalBaseline } from "@/lib/baselineOps";
 
 interface Props {
   currentZones: ZoneSet;
   allZones: ZoneSet[];
   currentWeekNo: number;
   planId: string;
+  baseline: PersonalBaseline;
 }
 
 const ZONE_KEYS: ZoneKey[] = ["E", "S", "MP", "T", "I"];
@@ -29,7 +31,7 @@ const ZONE_DESC: Record<ZoneKey, string> = {
   I: "Short reps only, by feel. Lowest priority.",
 };
 
-export default function ZonesClient({ currentZones, allZones, currentWeekNo, planId }: Props) {
+export default function ZonesClient({ currentZones, allZones, currentWeekNo, planId, baseline }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ZoneSet["zones"]>(
@@ -38,6 +40,22 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo, pla
   const [effectiveWeek, setEffectiveWeek] = useState(currentWeekNo);
   const [source, setSource] = useState("");
   const [saving, setSaving] = useState(false);
+  const [ftp, setFtp] = useState(baseline.ftpW?.toString() ?? "");
+  const [typicalHours, setTypicalHours] = useState(baseline.typicalWeeklyHours?.toString() ?? "");
+  const [baselineSaving, setBaselineSaving] = useState(false);
+
+  async function handleSaveBaseline() {
+    setBaselineSaving(true);
+    await savePersonalBaseline({
+      hrv: baseline.hrv, rhr: baseline.rhr,
+      sleepTargetHours: baseline.sleepTargetHours,
+      ftpW: ftp ? parseInt(ftp) : undefined,
+      typicalWeeklyHours: typicalHours ? parseFloat(typicalHours) : undefined,
+      note: baseline.note,
+    });
+    setBaselineSaving(false);
+    router.refresh();
+  }
 
   function updateZoneField(key: ZoneKey, field: keyof Zone, value: string | number | undefined) {
     setDraft((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
@@ -179,6 +197,43 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo, pla
           </div>
         </div>
       )}
+
+      {/* Personal training baseline */}
+      <div style={{
+        background: "var(--surface)", border: "1px solid var(--border)",
+        borderLeft: "3px solid #0ea5e9", borderRadius: 10, padding: "14px 16px", marginBottom: 24,
+      }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Personal Training Baseline</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+          Seeds the load index with your known training history so it's accurate from day 1, not after 4 weeks of logging.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>TYPICAL WEEKLY HOURS</span>
+            <input type="number" step="0.5" inputMode="decimal" value={typicalHours} onChange={(e) => setTypicalHours(e.target.value)}
+              style={inputStyle} placeholder="e.g. 8" />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>CYCLING FTP (WATTS)</span>
+            <input type="number" inputMode="numeric" value={ftp} onChange={(e) => setFtp(e.target.value)}
+              style={inputStyle} placeholder="e.g. 250" />
+          </label>
+        </div>
+        <button
+          onClick={handleSaveBaseline}
+          disabled={baselineSaving}
+          style={{ ...primaryBtn, minHeight: 40, fontSize: 13, opacity: baselineSaving ? 0.5 : 1 }}
+        >
+          {baselineSaving ? "Saving…" : "Save baseline"}
+        </button>
+        {(baseline.typicalWeeklyHours || baseline.ftpW) && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
+            {baseline.typicalWeeklyHours && `Seeded chronic load: ~${baseline.typicalWeeklyHours}h/week`}
+            {baseline.ftpW && baseline.typicalWeeklyHours && " · "}
+            {baseline.ftpW && `FTP ${baseline.ftpW}W · Zone 2 ≈ ${Math.round(baseline.ftpW * 0.56)}–${Math.round(baseline.ftpW * 0.75)}W`}
+          </div>
+        )}
+      </div>
 
       {/* Zone history */}
       {allZones.length > 1 && (

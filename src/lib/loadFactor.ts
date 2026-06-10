@@ -1,38 +1,46 @@
 import type { RecoveryReading, Session, PersonalBaseline } from "./types";
 
-// Intensity multiplier per category (load = km × multiplier)
-const INTENSITY: Record<string, number> = {
-  easy:      1.0,
-  steady:    1.5,
-  mp:        2.0,
-  threshold: 3.0,
-  vo2:       4.0,
-  long:      1.2,
-  race:      3.5,
-  bike:      0.7,
-  brick:     2.5,
-  rest:      0,
+// Estimated RPE per category — used when RPE is not logged
+// (Session-RPE method: load = durationMin × RPE, unit-agnostic across run/bike/brick)
+const EST_RPE_FALLBACK: Record<string, number> = {
+  easy: 3.5, steady: 5, mp: 6, threshold: 7, vo2: 8.5,
+  long: 4.5, race: 8.5, bike: 3.5, brick: 7, rest: 0,
 };
 
 export type LoadLevel = "green" | "amber" | "red" | "critical";
+
+// Once this many sessions are logged, actual data drives the chronic load fully.
+// Below it, we blend with the seeded baseline so ACWR is meaningful from day 1.
+const MIN_LOGGED_FOR_FULL_ACWR = 10;
+
+// Average RPE used to convert typical weekly hours → load units
+const TYPICAL_RPE = 4.5;
+
+// Component weights — must sum to 100
+const W = { training: 30, fatigue: 25, recovery: 25, life: 20 } as const;
 
 export interface LoadFactorResult {
   score: number;          // 0–100
   level: LoadLevel;
   training: {
-    acute: number;        // 7-day load
-    chronic: number;      // 28-day baseline (normalized to 7d)
-    ratio: number;        // ACWR
-    score: number;        // 0–33 contribution
+    acute: number;
+    chronic: number;
+    ratio: number;
+    score: number;        // 0–30
+    insufficient: boolean;
   };
-  lifeStress: {
-    avg: number | null;   // 3-day rolling avg of 1–10
-    score: number;        // 0–33 contribution
+  legFatigue: {
+    value: number | null; // today's logged 1–10
+    score: number;        // 0–25
   };
   recoveryDeficit: {
     hrvZ: number | null;
     rhrZ: number | null;
-    score: number;        // 0–34 contribution
+    score: number;        // 0–25
+  };
+  lifeStress: {
+    avg: number | null;
+    score: number;        // 0–20
   };
   headline: string;
   insight: string;
@@ -47,11 +55,23 @@ export function computeLoadFactor(
   baseline: PersonalBaseline
 ): LoadFactorResult {
 
+  const ftpW = baseline.ftpW;
+  const typicalWeeklyHours = baseline.typicalWeeklyHours;
+
   // ── Training load (ACWR) ──
-  const { acute, chronic } = computeTrainingLoad(today, sessions);
-  const acwr = chronic > 0 ? acute / chronic : (acute > 0 ? 1.0 : 0);
-  // Score: 0 at ACWR ≤0.8 (safe), ramps to 33 at ACWR ≥1.5
-  const trainingScore = Math.round(Math.min(33, Math.max(0, (acwr - 0.8) / 0.7) * 33));
+  const { acute, chronic, insufficient } = computeTrainingLoad(today, sessions, ftpW, typicalWeeklyHours);
+  const acwr = insufficient || chronic === 0
+    ? 0
+    : acute / chronic;
+  const trainingScore = insufficient
+    ? 0
+    : Math.round(Math.min(W.training, (acwr / 1.5) * W.training));
+
+  // ── Leg fatigue (today's reading, direct signal) ──
+  const todayFatigue = readings.find((r) => r.date === today)?.legFatigue ?? null;
+  const fatigueScore = todayFatigue != null
+    ? Math.round((todayFatigue / 10) * W.fatigue)
+    : 0;
 
   // ── Life stress (3-day rolling avg) ──
   const recentLifeStress = readings
@@ -62,8 +82,7 @@ export function computeLoadFactor(
   const lifeAvg = recentLifeStress.length > 0
     ? recentLifeStress.reduce((a, b) => a + b, 0) / recentLifeStress.length
     : null;
-  // Score: linear 0–33 across the 1–10 scale
-  const lifeScore = lifeAvg != null ? Math.round((lifeAvg / 10) * 33) : 0;
+  const lifeScore = lifeAvg != null ? Math.round((lifeAvg / 10) * W.life) : 0;
 
   // ── Recovery deficit (HRV + RHR z-scores) ──
   const todayR = readings.find((r) => r.date === today);
@@ -73,13 +92,13 @@ export function computeLoadFactor(
   const rhrZ = todayR?.rhrBpm != null
     ? (todayR.rhrBpm - baseline.rhr.mean) / baseline.rhr.sd
     : null;
-  // Each metric contributes up to 17 points; negative HRV z = deficit, positive RHR z = deficit
+  const half = W.recovery / 2;
   const recoveryScore = Math.round(
-    Math.min(17, Math.max(0, -(hrvZ ?? 0)) / 2 * 17) +
-    Math.min(17, Math.max(0,  (rhrZ ?? 0)) / 2 * 17)
+    Math.min(half, Math.max(0, -(hrvZ ?? 0)) / 2 * half) +
+    Math.min(half, Math.max(0,  (rhrZ ?? 0)) / 2 * half)
   );
 
-  const score = Math.min(100, trainingScore + lifeScore + recoveryScore);
+  const score = Math.min(100, trainingScore + fatigueScore + lifeScore + recoveryScore);
 
   const level: LoadLevel =
     score >= 75 ? "critical" :
@@ -90,18 +109,34 @@ export function computeLoadFactor(
   return {
     score,
     level,
-    training:        { acute, chronic, ratio: Math.round(acwr * 100) / 100, score: trainingScore },
-    lifeStress:      { avg: lifeAvg != null ? Math.round(lifeAvg * 10) / 10 : null, score: lifeScore },
+    training:        { acute, chronic, ratio: Math.round(acwr * 100) / 100, score: trainingScore, insufficient },
+    legFatigue:      { value: todayFatigue, score: fatigueScore },
     recoveryDeficit: { hrvZ, rhrZ, score: recoveryScore },
-    ...buildCopy(level, acwr, lifeAvg, hrvZ, rhrZ, score),
+    lifeStress:      { avg: lifeAvg != null ? Math.round(lifeAvg * 10) / 10 : null, score: lifeScore },
+    ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient),
   };
 }
 
 // ── Training load helpers ─────────────────────────────────
 
-function sessionLoad(s: Session): number {
-  const km = (s.actual?.distanceKm ?? s.targetDistanceKm ?? 0);
-  return km * (INTENSITY[s.category] ?? 1.0);
+// Returns load in RPE×min units (or TSS×6 for power-based, to keep same scale).
+// Never uses km as a proxy — cycling km ≠ running km in physiological terms.
+function sessionLoad(s: Session, ftpW?: number): number {
+  const a = s.actual;
+
+  // Power-based TSS for cycling when power + FTP are available
+  // TSS = (durationHours × avgPower²/FTP²) × 100
+  // Scaled ×6 to match RPE×duration units (1hr @ threshold ≈ 420 both ways)
+  if ((s.category === "bike" || s.category === "brick") && a?.avgPowerW && ftpW) {
+    const hrs = (a.durationMin ?? 0) / 60;
+    const tss = hrs * Math.pow(a.avgPowerW / ftpW, 2) * 100;
+    return tss * 6;
+  }
+
+  // RPE × duration (Session-RPE method — unit-agnostic: works for run, bike, brick)
+  const dur = a?.durationMin ?? s.targetDurationMin ?? 0;
+  const rpe = a?.rpe ?? EST_RPE_FALLBACK[s.category] ?? 5;
+  return dur * rpe;
 }
 
 function isoMinusDays(iso: string, days: number): string {
@@ -110,20 +145,48 @@ function isoMinusDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function computeTrainingLoad(today: string, sessions: Session[]): { acute: number; chronic: number } {
+function computeTrainingLoad(
+  today: string,
+  sessions: Session[],
+  ftpW?: number,
+  typicalWeeklyHours?: number
+): { acute: number; chronic: number; insufficient: boolean } {
   const day7  = isoMinusDays(today, 7);
   const day28 = isoMinusDays(today, 28);
 
   const done = sessions.filter((s) =>
-    s.date <= today && s.date > day28 && s.status !== "skipped"
+    s.date <= today && s.date > day28 && s.status === "done" && s.actual
   );
 
-  const acute        = done.filter((s) => s.date > day7).reduce((sum, s) => sum + sessionLoad(s), 0);
-  const chronicTotal = done.reduce((sum, s) => sum + sessionLoad(s), 0);
-  // Normalize chronic to a 7-day equivalent for direct ACWR comparison
-  const chronic = (chronicTotal / 28) * 7;
+  const acute = done
+    .filter((s) => s.date > day7)
+    .reduce((sum, s) => sum + sessionLoad(s, ftpW), 0);
 
-  return { acute: Math.round(acute), chronic: Math.round(chronic) };
+  // Seeded chronic from the user's known typical load.
+  // typicalWeeklyHours × 60min × TYPICAL_RPE = weekly load units (7-day equivalent).
+  const seededChronic = typicalWeeklyHours
+    ? typicalWeeklyHours * 60 * TYPICAL_RPE
+    : 0;
+
+  // Data-driven chronic from logged sessions.
+  const dataChronic = done.length > 0
+    ? (done.reduce((sum, s) => sum + sessionLoad(s, ftpW), 0) / 28) * 7
+    : 0;
+
+  // Blend: weight shifts from seeded → data as more sessions accumulate.
+  // At 0 sessions: fully seeded. At MIN_LOGGED sessions: fully data-driven.
+  const dataWeight = Math.min(1, done.length / MIN_LOGGED_FOR_FULL_ACWR);
+  const chronic = seededChronic > 0
+    ? seededChronic * (1 - dataWeight) + dataChronic * dataWeight
+    : dataChronic;
+
+  const insufficient = seededChronic === 0 && done.length < 5;
+
+  return {
+    acute: Math.round(acute),
+    chronic: Math.round(chronic),
+    insufficient,
+  };
 }
 
 // ── Copy ──────────────────────────────────────────────────
@@ -132,15 +195,29 @@ function buildCopy(
   level: LoadLevel,
   acwr: number,
   lifeAvg: number | null,
+  legFatigue: number | null,
   hrvZ: number | null,
   rhrZ: number | null,
-  score: number
+  score: number,
+  insufficient: boolean
 ): { headline: string; insight: string } {
   const parts: string[] = [];
 
-  if (acwr > 1.3) parts.push(`acute:chronic ratio at ${acwr.toFixed(2)} — above the safe window`);
-  else if (acwr < 0.8 && acwr > 0) parts.push(`low training load (ACWR ${acwr.toFixed(2)}) — room to build`);
-  else if (acwr > 0) parts.push(`training load in range (ACWR ${acwr.toFixed(2)})`);
+  if (insufficient) {
+    parts.push(`training history building (need ${MIN_LOGGED_FOR_FULL_ACWR} logged sessions for full ACWR)`);
+  } else if (acwr > 1.3) parts.push(`acute:chronic ratio ${acwr.toFixed(2)} — above the safe window`);
+  else if (acwr >= 0.8) parts.push(`training load in range (ACWR ${acwr.toFixed(2)})`);
+  else if (acwr >= 0.3) parts.push(`light training week so far (ACWR ${acwr.toFixed(2)})`);
+  else if (acwr > 0) parts.push(`very light load today (ACWR ${acwr.toFixed(2)}) — taper / recovery week`);
+
+  if (legFatigue != null) {
+    if (legFatigue >= 8) parts.push(`legs very heavy (${legFatigue}/10) — significant accumulated fatigue`);
+    else if (legFatigue >= 6) parts.push(`moderate leg fatigue (${legFatigue}/10)`);
+    else if (legFatigue >= 4) parts.push(`mild leg fatigue (${legFatigue}/10)`);
+    else parts.push(`legs feeling fresh (${legFatigue}/10)`);
+  } else {
+    parts.push("leg fatigue not logged");
+  }
 
   if (lifeAvg != null) {
     if (lifeAvg >= 7) parts.push(`life stress elevated (avg ${lifeAvg.toFixed(1)}/10)`);

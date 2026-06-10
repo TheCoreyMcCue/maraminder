@@ -30,6 +30,7 @@ export interface Actual {
   // Pace logged per quality zone (e.g. { MP: "4:18" }) — actual pace during the blocks
   segmentPace?: Partial<Record<ZoneKey, string>>;
   rpe?: number;
+  avgPowerW?: number;      // avg power in watts (cycling / brick)
   notes?: string;
   stravaUrl?: string;
   // Conditions
@@ -116,6 +117,10 @@ export interface PersonalBaseline {
   hrv:   { mean: number; sd: number };
   rhr:   { mean: number; sd: number };
   sleepTargetHours: number;
+  ftpW?: number;
+  // Seeds the 28-day chronic load when app history is sparse.
+  // Reflects pre-app training so ACWR isn't misleadingly high on day 1.
+  typicalWeeklyHours?: number;
   note?: string;
 }
 
@@ -132,7 +137,8 @@ export interface RecoveryReading {
   readiness?: number;
   source: "shortcuts" | "manual" | "export-tool";
   note?: string;
-  lifeStress?: number; // 1–10 subjective scale
+  lifeStress?: number;  // 1–10 subjective scale
+  legFatigue?: number;  // 1–10 (1 = fresh, 10 = very heavy legs)
 }
 
 export type RecoveryStatus = "green" | "amber" | "red" | "unknown";

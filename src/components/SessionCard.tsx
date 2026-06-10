@@ -13,7 +13,7 @@ interface Props {
   zones: ZoneSet;
   weekDates: { date: string; dow: string; sessions: Session[] }[];
   warnings?: string[];
-  // Drag handle props injected by the DnD wrapper in WeekView
+  ftpW?: number;
   dragListeners?: Record<string, unknown>;
   dragAttributes?: Record<string, unknown>;
 }
@@ -32,7 +32,7 @@ const LOG_LABEL: Partial<Record<import("@/lib/types").SessionCategory, string>> 
 };
 
 export default function SessionCard({
-  session, zones, weekDates, warnings = [],
+  session, zones, weekDates, warnings = [], ftpW,
   dragListeners, dragAttributes,
 }: Props) {
   const [showLog, setShowLog] = useState(false);
@@ -150,6 +150,12 @@ export default function SessionCard({
             <span style={{ color: "#22c55e", fontWeight: 700 }}>Logged: </span>
             {session.actual.distanceKm}km
             {session.actual.avgPacePerKm && ` · ${session.actual.avgPacePerKm}/km`}
+            {session.actual.avgPowerW && ` · ${session.actual.avgPowerW}W`}
+            {session.actual.avgPowerW && ftpW && (
+              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                {" "}(IF {(session.actual.avgPowerW / ftpW).toFixed(2)})
+              </span>
+            )}
             {session.actual.avgHr && ` · ${session.actual.avgHr} bpm`}
             {session.actual.rpe && ` · RPE ${session.actual.rpe}`}
             {session.actual.notes && (
@@ -188,7 +194,7 @@ export default function SessionCard({
         )}
 
         {/* Action buttons */}
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <div style={{ display: "flex", gap: 5, marginTop: 12, flexWrap: "wrap" }}>
           <Btn onClick={() => setShowLog(true)} disabled={isSkipped}>
             {isDone ? "Edit log" : LOG_LABEL[session.category] ?? "Log"}
           </Btn>
@@ -207,6 +213,7 @@ export default function SessionCard({
         <LogModal
           session={session}
           zones={zones}
+          ftpW={ftpW}
           onClose={() => setShowLog(false)}
           onSaved={() => { setShowLog(false); router.refresh(); }}
         />
@@ -235,14 +242,15 @@ function Btn({ onClick, disabled, muted, children }: {
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       disabled={disabled}
       style={{
-        flex: 1,
-        minHeight: 36,
-        padding: "0 6px",
+        flex: "1 1 0",
+        minWidth: 0,
+        minHeight: 34,
+        padding: "0 4px",
         borderRadius: 7,
         border: "1px solid var(--border)",
         background: "transparent",
         color: muted ? "var(--text-muted)" : "var(--text)",
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: 500,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.4 : 1,

@@ -160,9 +160,36 @@ function LoadFactorGauge({ lf }: { lf: LoadFactorResult }) {
   ];
 
   const components = [
-    { label: "Training",  score: lf.training.score,        max: 33, detail: `ACWR ${lf.training.ratio.toFixed(2)}` },
-    { label: "Life",      score: lf.lifeStress.score,      max: 33, detail: lf.lifeStress.avg != null ? `${lf.lifeStress.avg.toFixed(1)}/10` : "not logged" },
-    { label: "Recovery",  score: lf.recoveryDeficit.score, max: 34, detail: lf.recoveryDeficit.hrvZ != null ? `HRV z=${lf.recoveryDeficit.hrvZ.toFixed(1)}` : "no data" },
+    {
+      label: "Training",
+      score: lf.training.score,
+      max: 30,
+      detail: lf.training.insufficient
+        ? "building history…"
+        : `ACWR ${lf.training.ratio.toFixed(2)}`,
+      muted: lf.training.insufficient,
+    },
+    {
+      label: "Leg fatigue",
+      score: lf.legFatigue.score,
+      max: 25,
+      detail: lf.legFatigue.value != null ? `${lf.legFatigue.value}/10` : "not logged",
+      muted: lf.legFatigue.value == null,
+    },
+    {
+      label: "Recovery",
+      score: lf.recoveryDeficit.score,
+      max: 25,
+      detail: lf.recoveryDeficit.hrvZ != null ? `HRV z=${lf.recoveryDeficit.hrvZ.toFixed(1)}` : "no data",
+      muted: false,
+    },
+    {
+      label: "Life",
+      score: lf.lifeStress.score,
+      max: 20,
+      detail: lf.lifeStress.avg != null ? `${lf.lifeStress.avg.toFixed(1)}/10` : "not logged",
+      muted: false,
+    },
   ];
 
   return (
@@ -201,13 +228,24 @@ function LoadFactorGauge({ lf }: { lf: LoadFactorResult }) {
       {/* Component breakdown */}
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {components.map((c) => (
-          <div key={c.label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px 60px", gap: 8, alignItems: "center" }}>
+          <div key={c.label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px 80px", gap: 8, alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{c.label}</span>
             <div style={{ height: 4, background: "var(--border)", borderRadius: 2 }}>
-              <div style={{ height: "100%", width: `${(c.score / c.max) * 100}%`, background: color, borderRadius: 2, transition: "width 0.3s" }} />
+              <div style={{
+                height: "100%",
+                width: `${(c.score / c.max) * 100}%`,
+                background: c.muted ? "var(--text-muted)" : color,
+                borderRadius: 2,
+                transition: "width 0.3s",
+                opacity: c.muted ? 0.4 : 1,
+              }} />
             </div>
-            <span style={{ fontSize: 11, fontWeight: 600, color, textAlign: "right" }}>{c.score}</span>
-            <span style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.7 }}>{c.detail}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: c.muted ? "var(--text-muted)" : color, textAlign: "right" }}>
+              {c.score}
+            </span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.7, fontStyle: c.muted ? "italic" : "normal" }}>
+              {c.detail}
+            </span>
           </div>
         ))}
       </div>

@@ -69,6 +69,7 @@ export default async function WeekPage({ params }: Props) {
       dailyRec={dailyRec}
       loadFactor={loadFactor}
       baseline={isCurrentWeek ? baseline : undefined}
+      ftpW={baseline.ftpW}
     />
   );
 }

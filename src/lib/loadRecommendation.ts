@@ -45,18 +45,22 @@ export function getDailyLoadRec(
   const sleepHours = reading.sleepHours ?? null;
   const sleepOk = sleepHours != null ? sleepHours >= baseline.sleepTargetHours - 1 : null;
 
+  const legFatigue = reading.legFatigue ?? null;
+
   // ── Determine level ────────────────────────────────────
   const hrvAmber  = hrvZ != null && hrvZ <= -0.5  && hrvZ > -1.5;
   const hrvRed    = hrvZ != null && hrvZ <= -1.5;
   const rhrAmber  = rhrZ != null && rhrZ >= 0.5   && rhrZ < 1.5;
   const rhrRed    = rhrZ != null && rhrZ >= 1.5;
   const sleepBad  = sleepOk === false;
+  const legsHeavy = legFatigue != null && legFatigue >= 7;
+  const legsVeryHeavy = legFatigue != null && legFatigue >= 9;
   const trend     = checkMultiDayDecline(recentReadings, baseline);
 
   let level: LoadLevel;
-  if ((hrvRed && (rhrRed || rhrAmber)) || (rhrRed && (hrvRed || hrvAmber)) || trend) {
+  if ((hrvRed && (rhrRed || rhrAmber)) || (rhrRed && (hrvRed || hrvAmber)) || trend || legsVeryHeavy) {
     level = "red";
-  } else if (hrvRed || rhrRed || hrvAmber || rhrAmber || sleepBad) {
+  } else if (hrvRed || rhrRed || hrvAmber || rhrAmber || sleepBad || legsHeavy) {
     level = "amber";
   } else {
     level = "green";
@@ -71,7 +75,7 @@ export function getDailyLoadRec(
     level,
     headline,
     rationale,
-    sessionAdvice: buildSessionAdvice(level, todaySessions),
+    sessionAdvice: buildSessionAdvice(level, todaySessions, legFatigue),
     hrv: reading.hrvMs != null && hrvZ != null
       ? { value: reading.hrvMs, devPct: ((reading.hrvMs - baseline.hrv.mean) / baseline.hrv.mean) * 100, z: hrvZ }
       : undefined,
@@ -159,19 +163,31 @@ function fmtBpmDiff(diff: number): string {
 
 const ANCHOR_CATS = new Set(["threshold", "vo2", "mp", "long", "race", "brick"]);
 
-function buildSessionAdvice(level: LoadLevel, sessions: Session[]): SessionAdvice[] {
+function buildSessionAdvice(level: LoadLevel, sessions: Session[], legFatigue?: number | null): SessionAdvice[] {
   return sessions
     .filter((s) => s.status !== "skipped")
     .map((s) => {
       const isAnchor = s.type === "anchor" || ANCHOR_CATS.has(s.category);
-      const advice = getSessionAdvice(level, s.category, isAnchor);
+      const advice = getSessionAdvice(level, s.category, isAnchor, legFatigue);
       return advice ? { sk: s.sk, title: s.title, advice } : null;
     })
     .filter((a): a is SessionAdvice => a !== null);
 }
 
-function getSessionAdvice(level: LoadLevel, category: Session["category"], isAnchor: boolean): string | null {
+function getSessionAdvice(
+  level: LoadLevel,
+  category: Session["category"],
+  isAnchor: boolean,
+  legFatigue?: number | null
+): string | null {
+  const heavyLegs = legFatigue != null && legFatigue >= 7;
+  const veryHeavyLegs = legFatigue != null && legFatigue >= 9;
+
   if (level === "green") {
+    if (veryHeavyLegs && isAnchor)
+      return `Legs very heavy (${legFatigue}/10). Consider dropping 1 rep/set or cap the session at 80% planned volume.`;
+    if (heavyLegs && (category === "threshold" || category === "vo2"))
+      return `Legs reporting heavy (${legFatigue}/10). Complete the session but stay conservative on pace — let the data not the ego set the effort.`;
     return isAnchor ? "Full session. Good adaptation signal today." : null;
   }
 

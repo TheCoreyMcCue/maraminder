@@ -6,14 +6,21 @@ const EST_RPE: Record<string, number> = {
   long: 4.5, race: 8.5, bike: 3.5, brick: 7, rest: 0,
 };
 
-function sessionLoad(
-  durationMin: number | undefined,
-  category: string,
-  rpe?: number
-): number {
-  const dur = durationMin ?? 0;
-  if (dur === 0) return 0;
-  return dur * (rpe ?? EST_RPE[category] ?? 5);
+function sessionLoad(s: Session, ftpW?: number): number {
+  const a = s.actual;
+  // Power-based TSS for cycling (×6 to stay on same scale as RPE×min)
+  if ((s.category === "bike" || s.category === "brick") && a?.avgPowerW && ftpW) {
+    const hrs = (a.durationMin ?? s.targetDurationMin ?? 0) / 60;
+    return hrs * Math.pow(a.avgPowerW / ftpW, 2) * 100 * 6;
+  }
+  const dur = a?.durationMin ?? s.targetDurationMin ?? 0;
+  const rpe = a?.rpe ?? EST_RPE[s.category] ?? 5;
+  return dur * rpe;
+}
+
+function plannedSessionLoad(s: Session): number {
+  const dur = s.targetDurationMin ?? 0;
+  return dur * (EST_RPE[s.category] ?? 5);
 }
 
 // ── Types ─────────────────────────────────────────────────
@@ -58,6 +65,8 @@ export function computeWeeklyAnalysis(
   allZones: ZoneSet[],
   meta: PlanMeta
 ): WeekAnalysis[] {
+  const ftpW = baseline.ftpW;
+
   const analyzed: WeekAnalysis[] = weeks.map((w) => {
     const wSessions = sessions.filter((s) => s.weekNo === w.weekNo);
     const wReadings = readings.filter(
@@ -68,10 +77,10 @@ export function computeWeeklyAnalysis(
     let actualLoad = 0, plannedLoad = 0, actualKm = 0, plannedKm = 0;
     for (const s of wSessions) {
       if (s.status === "skipped") continue;
-      plannedLoad += sessionLoad(s.targetDurationMin, s.category);
+      plannedLoad += plannedSessionLoad(s);
       plannedKm += s.targetDistanceKm ?? 0;
       if (s.status === "done" && s.actual) {
-        actualLoad += sessionLoad(s.actual.durationMin, s.category, s.actual.rpe ?? undefined);
+        actualLoad += sessionLoad(s, ftpW);
         actualKm += s.actual.distanceKm ?? 0;
       }
     }

@@ -7,6 +7,7 @@ import { logActual } from "@/lib/planOps";
 interface Props {
   session: Session;
   zones: ZoneSet;
+  ftpW?: number;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -20,7 +21,7 @@ const ZONE_HR_LABELS: Record<string, string> = {
   I: "Interval HR",
 };
 
-export default function LogModal({ session, zones, onClose, onSaved }: Props) {
+export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Props) {
   const existing = session.actual;
 
   const [dist, setDist] = useState(existing?.distanceKm?.toString() ?? session.targetDistanceKm?.toString() ?? "");
@@ -31,11 +32,13 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
   const [stravaUrl, setStravaUrl] = useState(existing?.stravaUrl ?? "");
   const [tempC, setTempC] = useState(existing?.tempC?.toString() ?? "");
   const [wind, setWind] = useState(existing?.wind ?? "");
+  const [avgPowerW, setAvgPowerW] = useState(existing?.avgPowerW?.toString() ?? "");
   const [dcHr1, setDcHr1] = useState(existing?.decoupling?.firstHalfHr?.toString() ?? "");
   const [dcHr2, setDcHr2] = useState(existing?.decoupling?.secondHalfHr?.toString() ?? "");
   const [dcPace, setDcPace] = useState(existing?.decoupling?.paceHeldKm ?? "");
   const [saving, setSaving] = useState(false);
 
+  const isCycling = session.category === "bike" || session.category === "brick";
   const showDecoupling = ["long", "mp"].includes(session.category);
 
   // Per-zone HR state — only for quality zones present in this session
@@ -83,6 +86,7 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
       stravaUrl: stravaUrl.trim() || undefined,
       tempC: tempC ? parseFloat(tempC) : undefined,
       wind: wind.trim() || undefined,
+      avgPowerW: avgPowerW ? parseInt(avgPowerW) : undefined,
       decoupling: (dcHr1 || dcHr2 || dcPace) ? {
         firstHalfHr: dcHr1 ? parseInt(dcHr1) : undefined,
         secondHalfHr: dcHr2 ? parseInt(dcHr2) : undefined,
@@ -107,12 +111,12 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
         {/* Distance + duration */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
           <Field label="DISTANCE (km)">
-            <input type="number" step="0.1" value={dist}
+            <input type="number" step="0.1" inputMode="decimal" value={dist}
               onChange={(e) => setDist(e.target.value)}
               style={inputStyle} placeholder={session.targetDistanceKm?.toString() ?? "0"} />
           </Field>
           <Field label="DURATION (min)">
-            <input type="number" value={dur}
+            <input type="number" inputMode="decimal" value={dur}
               onChange={(e) => setDur(e.target.value)}
               style={inputStyle} placeholder={session.targetDurationMin?.toString() ?? "0"} />
           </Field>
@@ -141,6 +145,7 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
                 <Field label={`${ZONE_HR_LABELS[z] ?? z} HR (bpm)`}>
                   <input
                     type="number"
+                    inputMode="numeric"
                     value={segmentHr[z] ?? ""}
                     onChange={(e) => setSegmentHr((prev) => ({ ...prev, [z]: e.target.value }))}
                     style={inputStyle}
@@ -167,12 +172,12 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
         {/* Overall HR + RPE */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
           <Field label="OVERALL AVG HR (bpm)">
-            <input type="number" value={overallHr}
+            <input type="number" inputMode="numeric" value={overallHr}
               onChange={(e) => setOverallHr(e.target.value)}
               style={inputStyle} placeholder="—" />
           </Field>
           <Field label="RPE (1–10)">
-            <input type="number" min={1} max={10} value={rpe}
+            <input type="number" inputMode="numeric" min={1} max={10} value={rpe}
               onChange={(e) => setRpe(e.target.value)}
               style={inputStyle} placeholder="—" />
           </Field>
@@ -181,7 +186,7 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
         {/* Conditions */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <Field label="TEMP (°C)">
-            <input type="number" step="0.5" value={tempC} onChange={(e) => setTempC(e.target.value)}
+            <input type="number" step="0.5" inputMode="decimal" value={tempC} onChange={(e) => setTempC(e.target.value)}
               style={inputStyle} placeholder="—" />
           </Field>
           <Field label="WIND">
@@ -189,6 +194,17 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
               style={inputStyle} placeholder="calm / light / strong" />
           </Field>
         </div>
+
+        {/* Power — bike / brick sessions only */}
+        {isCycling && (
+          <PowerSection
+            avgPowerW={avgPowerW}
+            setAvgPowerW={setAvgPowerW}
+            durationMin={dur}
+            ftpW={ftpW}
+            inputStyle={inputStyle}
+          />
+        )}
 
         {/* Cardiac decoupling — long runs + MP sessions only */}
         {showDecoupling && (
@@ -201,11 +217,11 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               <Field label="1ST HALF HR">
-                <input type="number" value={dcHr1} onChange={(e) => setDcHr1(e.target.value)}
+                <input type="number" inputMode="numeric" value={dcHr1} onChange={(e) => setDcHr1(e.target.value)}
                   style={inputStyle} placeholder="168" />
               </Field>
               <Field label="2ND HALF HR">
-                <input type="number" value={dcHr2} onChange={(e) => setDcHr2(e.target.value)}
+                <input type="number" inputMode="numeric" value={dcHr2} onChange={(e) => setDcHr2(e.target.value)}
                   style={inputStyle} placeholder="175" />
               </Field>
               <Field label="PACE HELD">
@@ -247,6 +263,65 @@ export default function LogModal({ session, zones, onClose, onSaved }: Props) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Power section (bike / brick only) ────────────────────
+
+function PowerSection({ avgPowerW, setAvgPowerW, durationMin, ftpW, inputStyle }: {
+  avgPowerW: string;
+  setAvgPowerW: (v: string) => void;
+  durationMin: string;
+  ftpW?: number;
+  inputStyle: React.CSSProperties;
+}) {
+  const power = avgPowerW ? parseInt(avgPowerW) : null;
+  const dur = durationMin ? parseFloat(durationMin) : null;
+
+  // TSS = (durationHours × (avgPower/FTP)²) × 100
+  const tss = power && dur && ftpW
+    ? Math.round((dur / 60) * Math.pow(power / ftpW, 2) * 100)
+    : null;
+  const IF = power && ftpW ? (power / ftpW).toFixed(2) : null;
+
+  return (
+    <div style={{
+      background: "var(--surface-2)", border: "1px solid var(--border)",
+      borderRadius: 8, padding: "12px 14px", marginBottom: 12,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: 10 }}>
+        POWER
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>AVG POWER (W)</span>
+          <input type="number" inputMode="numeric" value={avgPowerW} onChange={(e) => setAvgPowerW(e.target.value)}
+            style={inputStyle} placeholder="—" />
+        </label>
+        {/* Live TSS + IF when FTP is set */}
+        {ftpW && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>TSS / IF</span>
+            <div style={{ padding: "8px 10px", background: "var(--surface)", borderRadius: 6, border: "1px solid var(--border)", fontSize: 14 }}>
+              {tss != null && IF != null
+                ? <><span style={{ fontWeight: 700 }}>{tss}</span> <span style={{ color: "var(--text-muted)", fontSize: 12 }}>TSS · IF {IF}</span></>
+                : <span style={{ color: "var(--text-muted)" }}>enter power</span>
+              }
+            </div>
+          </div>
+        )}
+      </div>
+      {!ftpW && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+          Set your FTP in Zones → personal baseline to see TSS and IF.
+        </div>
+      )}
+      {ftpW && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+          vs FTP {ftpW}W · IF &lt;0.75 = recovery, 0.75–0.90 = aerobic, &gt;1.0 = above threshold
+        </div>
+      )}
     </div>
   );
 }

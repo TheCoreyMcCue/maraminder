@@ -68,6 +68,7 @@ export default async function Home() {
       dailyRec={dailyRec}
       loadFactor={loadFactor}
       baseline={baseline}
+      ftpW={baseline.ftpW}
     />
   );
 }

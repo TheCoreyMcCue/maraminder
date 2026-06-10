@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     sleepScore: num(body.sleepScore),
     readiness:  num(body.readiness),
     lifeStress: num(body.lifeStress),
+    legFatigue: num(body.legFatigue),
     source: (body.source as "shortcuts" | "manual" | "export-tool") ?? "shortcuts",
     note: (body.note as string | undefined) || undefined,
   });

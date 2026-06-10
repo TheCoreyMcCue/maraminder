@@ -36,6 +36,7 @@ interface Props {
   dailyRec?: DailyLoadRec;
   loadFactor?: import("@/lib/loadFactor").LoadFactorResult;
   baseline?: PersonalBaseline;
+  ftpW?: number;
 }
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -51,7 +52,7 @@ function dateToDow(iso: string) {
   return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(iso + "T12:00:00").getDay()];
 }
 
-export default function WeekView({ week, sessions, zones, allWeeks, meta, recoveryDays, today: todayProp, planId, dailyRec, loadFactor, baseline }: Props) {
+export default function WeekView({ week, sessions, zones, allWeeks, meta, recoveryDays, today: todayProp, planId, dailyRec, loadFactor, baseline, ftpW }: Props) {
   const router = useRouter();
   const [activeId, setActiveId] = useState<string | null>(null);
   // Use server-provided today to avoid hydration mismatch
@@ -280,6 +281,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
                           zones={zones}
                           weekDates={weekDates}
                           warnings={warnMap[s.sk]}
+                          ftpW={ftpW}
                         />
                       </DraggableCard>
                     ))

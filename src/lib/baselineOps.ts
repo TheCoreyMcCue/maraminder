@@ -13,6 +13,7 @@ const DEFAULT_BASELINE: PersonalBaseline = {
   hrv:  { mean: 67, sd: 10 },
   rhr:  { mean: 53, sd: 3  },
   sleepTargetHours: 7.5,
+  typicalWeeklyHours: 8,
   note: "Field estimate — HRV ±10ms, RHR ±3bpm based on 2yr averages",
 };
 
@@ -24,7 +25,7 @@ export async function getPersonalBaseline(): Promise<PersonalBaseline> {
 }
 
 export async function savePersonalBaseline(
-  baseline: Pick<PersonalBaseline, "hrv" | "rhr" | "sleepTargetHours" | "note">
+  baseline: Pick<PersonalBaseline, "hrv" | "rhr" | "sleepTargetHours" | "note" | "ftpW" | "typicalWeeklyHours">
 ): Promise<void> {
   await docClient.send(new PutCommand({
     TableName: TABLE_NAME,

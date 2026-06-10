@@ -280,6 +280,7 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
   const [sleep, setSleep] = useState(existing?.sleepHours?.toString() ?? "");
   const [sleepScore, setSleepScore] = useState(existing?.sleepScore?.toString() ?? "");
   const [lifeStress, setLifeStress] = useState<number | null>(existing?.lifeStress ?? null);
+  const [legFatigue, setLegFatigue] = useState<number | null>(existing?.legFatigue ?? null);
   const [note, setNote] = useState(existing?.note ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -293,6 +294,7 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
       sleepHours: sleep ? parseFloat(sleep) : undefined,
       sleepScore: sleepScore ? parseInt(sleepScore) : undefined,
       lifeStress: lifeStress ?? undefined,
+      legFatigue: legFatigue ?? undefined,
       source: "manual",
       note: note.trim() || undefined,
     });
@@ -359,6 +361,39 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
           </div>
         </div>
 
+        {/* Leg fatigue picker */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 8 }}>
+            LEG FATIGUE
+            {legFatigue && (
+              <span style={{ marginLeft: 8, fontWeight: 400, color: legFatigueColor(legFatigue) }}>
+                {legFatigue}/10 — {legFatigueLabel(legFatigue)}
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 5 }}>
+            {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+              <button
+                key={n}
+                onClick={() => setLegFatigue(legFatigue === n ? null : n)}
+                style={{
+                  flex: 1, height: 34, borderRadius: 6,
+                  border: `1px solid ${legFatigue === n ? legFatigueColor(n) : "var(--border)"}`,
+                  background: legFatigue === n ? legFatigueColor(n) + "33" : "var(--surface-2)",
+                  color: legFatigue === n ? legFatigueColor(n) : "var(--text-muted)",
+                  fontSize: 12, fontWeight: legFatigue === n ? 700 : 400,
+                  cursor: "pointer", WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", marginTop: 4, opacity: 0.6 }}>
+            <span>Fresh</span><span>Moderate</span><span>Very heavy</span>
+          </div>
+        </div>
+
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>NOTE</div>
           <textarea
@@ -385,6 +420,20 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
   );
 }
 
+function legFatigueColor(n: number): string {
+  if (n <= 3) return "#22c55e";
+  if (n <= 6) return "#f59e0b";
+  return "#ef4444";
+}
+
+function legFatigueLabel(n: number): string {
+  if (n <= 2) return "fresh";
+  if (n <= 4) return "mild";
+  if (n <= 6) return "moderate";
+  if (n <= 8) return "heavy";
+  return "very heavy";
+}
+
 function lifeStressColor(n: number): string {
   if (n <= 3) return "#22c55e";
   if (n <= 6) return "#f59e0b";
@@ -405,7 +454,10 @@ function EntryField({ label, value, onChange, placeholder, step }: {
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{label}</span>
       <input
-        type="number" step={step ?? "1"} value={value}
+        type="number"
+        step={step ?? "1"}
+        inputMode={step === "0.1" ? "decimal" : "numeric"}
+        value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         style={inputStyle}
