@@ -14,6 +14,9 @@ interface Props {
 
 const QUALITY_ZONES: ZoneKey[] = ["S", "MP", "T", "I"];
 
+// Normalise decimal separator before parsing — handles locales where "," is used instead of "."
+const parseDecimal = (s: string) => parseFloat(s.replace(",", "."));
+
 const ZONE_HR_LABELS: Record<string, string> = {
   S: "Steady HR",
   MP: "MP HR",
@@ -84,7 +87,7 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
   );
 
   const computedPace = dist && dur
-    ? computePaceFromDistTime(parseFloat(dist), parseFloat(dur))
+    ? computePaceFromDistTime(parseDecimal(dist), parseDecimal(dur))
     : "—";
 
   async function handleSave() {
@@ -102,8 +105,8 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
     }
 
     const actual: Omit<Actual, "targetSnapshot"> = {
-      distanceKm: parseFloat(dist),
-      durationMin: parseFloat(dur),
+      distanceKm: parseDecimal(dist),
+      durationMin: parseDecimal(dur),
       avgPacePerKm: computedPace !== "—" ? computedPace : undefined,
       avgHr: overallHr ? parseInt(overallHr) : undefined,
       segmentHr: Object.keys(builtSegmentHr).length > 0 ? builtSegmentHr : undefined,
@@ -111,7 +114,7 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
       rpe: rpe ? parseInt(rpe) : undefined,
       notes: notes || undefined,
       stravaUrl: stravaUrl.trim() || undefined,
-      tempC: tempC ? parseFloat(tempC) : undefined,
+      tempC: tempC ? parseDecimal(tempC) : undefined,
       wind: wind.trim() || undefined,
       avgPowerW: avgPowerW ? parseInt(avgPowerW) : undefined,
       decoupling: (dcHr1 || dcHr2 || dcPace) ? {
@@ -304,7 +307,7 @@ function PowerSection({ avgPowerW, setAvgPowerW, durationMin, ftpW, inputStyle }
   inputStyle: React.CSSProperties;
 }) {
   const power = avgPowerW ? parseInt(avgPowerW) : null;
-  const dur = durationMin ? parseFloat(durationMin) : null;
+  const dur = durationMin ? parseDecimal(durationMin) : null;
 
   // TSS = (durationHours × (avgPower/FTP)²) × 100
   const tss = power && dur && ftpW

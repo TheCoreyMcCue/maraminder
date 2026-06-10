@@ -289,9 +289,9 @@ function ManualEntryModal({ date, planId, existing, onClose, onSaved }: {
     setSaving(true);
     await upsertRecovery(planId, {
       date,
-      hrvMs: hrv ? parseFloat(hrv) : undefined,
-      rhrBpm: rhr ? parseFloat(rhr) : undefined,
-      sleepHours: sleep ? parseFloat(sleep) : undefined,
+      hrvMs: hrv ? parseFloat(hrv.replace(",", ".")) : undefined,
+      rhrBpm: rhr ? parseFloat(rhr.replace(",", ".")) : undefined,
+      sleepHours: sleep ? parseFloat(sleep.replace(",", ".")) : undefined,
       sleepScore: sleepScore ? parseInt(sleepScore) : undefined,
       lifeStress: lifeStress ?? undefined,
       legFatigue: legFatigue ?? undefined,

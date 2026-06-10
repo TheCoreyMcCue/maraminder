@@ -50,7 +50,7 @@ export default function ZonesClient({ currentZones, allZones, currentWeekNo, pla
       hrv: baseline.hrv, rhr: baseline.rhr,
       sleepTargetHours: baseline.sleepTargetHours,
       ftpW: ftp ? parseInt(ftp) : undefined,
-      typicalWeeklyHours: typicalHours ? parseFloat(typicalHours) : undefined,
+      typicalWeeklyHours: typicalHours ? parseFloat(typicalHours.replace(",", ".")) : undefined,
       note: baseline.note,
     });
     setBaselineSaving(false);
