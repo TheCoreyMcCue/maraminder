@@ -21,6 +21,16 @@ const ZONE_HR_LABELS: Record<string, string> = {
   I: "Interval HR",
 };
 
+// Fallback quality zones per category when zoneRefs don't specify any
+const CATEGORY_QUALITY_ZONES: Partial<Record<string, ZoneKey[]>> = {
+  mp:        ["MP"],
+  threshold: ["T"],
+  vo2:       ["I"],
+  long:      ["MP"],
+  steady:    ["S"],
+  brick:     ["MP"],
+};
+
 export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Props) {
   const existing = session.actual;
 
@@ -41,10 +51,22 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
   const isCycling = session.category === "bike" || session.category === "brick";
   const showDecoupling = ["long", "mp"].includes(session.category);
 
-  // Per-zone HR state — only for quality zones present in this session
-  const sessionQualityZones = session.zoneRefs.filter((z): z is ZoneKey =>
-    QUALITY_ZONES.includes(z as ZoneKey)
-  );
+  // Quality zones: zoneRefs → category default → existing logged data (in that priority)
+  const sessionQualityZones = (() => {
+    const fromRefs = session.zoneRefs.filter((z): z is ZoneKey =>
+      QUALITY_ZONES.includes(z as ZoneKey)
+    );
+    if (fromRefs.length > 0) return fromRefs;
+    const fromCat = (CATEGORY_QUALITY_ZONES[session.category] ?? []) as ZoneKey[];
+    if (fromCat.length > 0) return fromCat;
+    // If editing a previously logged session that had quality block data, show those zones
+    const fromExisting = [
+      ...Object.keys(existing?.segmentHr ?? {}),
+      ...Object.keys(existing?.segmentPace ?? {}),
+    ].filter((z): z is ZoneKey => QUALITY_ZONES.includes(z as ZoneKey));
+    return [...new Set(fromExisting)];
+  })();
+
   const [segmentHr, setSegmentHr] = useState<Partial<Record<ZoneKey, string>>>(
     () => Object.fromEntries(
       sessionQualityZones.map((z) => [z, existing?.segmentHr?.[z]?.toString() ?? ""])
@@ -116,7 +138,7 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
               style={inputStyle} placeholder={session.targetDistanceKm?.toString() ?? "0"} />
           </Field>
           <Field label="DURATION (min)">
-            <input type="number" inputMode="decimal" value={dur}
+            <input type="number" step="0.1" inputMode="decimal" value={dur}
               onChange={(e) => setDur(e.target.value)}
               style={inputStyle} placeholder={session.targetDurationMin?.toString() ?? "0"} />
           </Field>
