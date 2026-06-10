@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { Session, ZoneSet, Actual, ZoneKey } from "@/lib/types";
-import { formatSessionTarget, computePaceFromDistTime } from "@/lib/zones";
+import { formatSessionTarget, computePaceFromDistTime, parseTimeToMinutes, minutesToTimeStr } from "@/lib/zones";
 import { logActual } from "@/lib/planOps";
 
 interface Props {
@@ -38,7 +38,13 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
   const existing = session.actual;
 
   const [dist, setDist] = useState(existing?.distanceKm?.toString() ?? session.targetDistanceKm?.toString() ?? "");
-  const [dur, setDur] = useState(existing?.durationMin?.toString() ?? session.targetDurationMin?.toString() ?? "");
+  const [dur, setDur] = useState(
+    existing?.durationMin
+      ? minutesToTimeStr(existing.durationMin)
+      : session.targetDurationMin
+      ? minutesToTimeStr(session.targetDurationMin)
+      : ""
+  );
   const [overallHr, setOverallHr] = useState(existing?.avgHr?.toString() ?? "");
   const [rpe, setRpe] = useState(existing?.rpe?.toString() ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
@@ -87,11 +93,11 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
   );
 
   const computedPace = dist && dur
-    ? computePaceFromDistTime(parseDecimal(dist), parseDecimal(dur))
+    ? computePaceFromDistTime(parseDecimal(dist), parseTimeToMinutes(dur))
     : "—";
 
   async function handleSave() {
-    if (!dist || !dur) return;
+    if (!dist || !dur || !(parseTimeToMinutes(dur) > 0)) return;
     setSaving(true);
 
     const builtSegmentHr: Partial<Record<ZoneKey, number>> = {};
@@ -106,7 +112,7 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
 
     const actual: Omit<Actual, "targetSnapshot"> = {
       distanceKm: parseDecimal(dist),
-      durationMin: parseDecimal(dur),
+      durationMin: parseTimeToMinutes(dur),
       avgPacePerKm: computedPace !== "—" ? computedPace : undefined,
       avgHr: overallHr ? parseInt(overallHr) : undefined,
       segmentHr: Object.keys(builtSegmentHr).length > 0 ? builtSegmentHr : undefined,
@@ -145,10 +151,10 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
               onChange={(e) => setDist(e.target.value)}
               style={inputStyle} placeholder={session.targetDistanceKm?.toString() ?? "0"} />
           </Field>
-          <Field label="DURATION (min)">
-            <input type="text" inputMode="decimal" value={dur}
+          <Field label="DURATION (h:mm:ss)">
+            <input type="text" inputMode="numeric" value={dur}
               onChange={(e) => setDur(e.target.value)}
-              style={inputStyle} placeholder={session.targetDurationMin?.toString() ?? "0"} />
+              style={inputStyle} placeholder="1:03:25" />
           </Field>
         </div>
 
@@ -287,8 +293,8 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
 
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onClose} style={secondaryBtn}>Cancel</button>
-          <button onClick={handleSave} disabled={saving || !dist || !dur}
-            style={{ ...primaryBtn, opacity: saving || !dist || !dur ? 0.5 : 1 }}>
+          <button onClick={handleSave} disabled={saving || !dist || !(parseTimeToMinutes(dur) > 0)}
+            style={{ ...primaryBtn, opacity: saving || !dist || !(parseTimeToMinutes(dur) > 0) ? 0.5 : 1 }}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -307,7 +313,7 @@ function PowerSection({ avgPowerW, setAvgPowerW, durationMin, ftpW, inputStyle }
   inputStyle: React.CSSProperties;
 }) {
   const power = avgPowerW ? parseInt(avgPowerW) : null;
-  const dur = durationMin ? parseDecimal(durationMin) : null;
+  const dur = durationMin ? parseTimeToMinutes(durationMin) : null;
 
   // TSS = (durationHours × (avgPower/FTP)²) × 100
   const tss = power && dur && ftpW

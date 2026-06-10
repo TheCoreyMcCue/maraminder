@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { Session, ZoneSet, Warning } from "@/lib/types";
-import { formatSessionTarget } from "@/lib/zones";
+import { formatSessionTarget, minutesToTimeStr } from "@/lib/zones";
 import CategoryPill, { categoryColors } from "./CategoryPill";
 import LogModal from "./LogModal";
 import MoveModal from "./MoveModal";
@@ -142,11 +142,7 @@ export default function SessionCard({
         {session.targetDistanceKm && (
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 5 }}>
             ~{session.targetDistanceKm}km
-            {session.targetDurationMin && (
-              <> · {Math.floor(session.targetDurationMin / 60)}h
-                {session.targetDurationMin % 60 > 0 ? `${session.targetDurationMin % 60}m` : ""}
-              </>
-            )}
+            {session.targetDurationMin && ` · ${minutesToTimeStr(session.targetDurationMin)}`}
           </div>
         )}
 

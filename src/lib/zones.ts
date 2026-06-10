@@ -50,6 +50,30 @@ export function formatSessionTarget(session: Session, zoneSet: ZoneSet): string 
     .join(" · ");
 }
 
+// ── Duration helpers ─────────────────────────────────────
+
+// Accepts "1:03:25" (h:mm:ss), "63:25" (mm:ss), or plain decimal minutes.
+export function parseTimeToMinutes(s: string): number {
+  const clean = s.trim().replace(",", ".");
+  if (!clean) return NaN;
+  const parts = clean.split(":").map(Number);
+  if (parts.some(isNaN)) return NaN;
+  if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
+  if (parts.length === 2) return parts[0] + parts[1] / 60;
+  return parts[0];
+}
+
+// Converts decimal minutes → "h:mm:ss" or "mm:ss" string for display/input.
+export function minutesToTimeStr(minutes: number): string {
+  if (!minutes || minutes <= 0) return "";
+  const totalSecs = Math.round(minutes * 60);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export function computePaceFromDistTime(
   distanceKm: number,
   durationMin: number
