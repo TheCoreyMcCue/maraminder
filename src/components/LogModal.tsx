@@ -38,13 +38,27 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
   const existing = session.actual;
 
   const [dist, setDist] = useState(existing?.distanceKm?.toString() ?? session.targetDistanceKm?.toString() ?? "");
-  const [dur, setDur] = useState(
-    existing?.durationMin
-      ? minutesToTimeStr(existing.durationMin)
-      : session.targetDurationMin
-      ? minutesToTimeStr(session.targetDurationMin)
-      : ""
-  );
+  // Duration stored as three separate fields so mobile numeric-pad works (no colon needed)
+  const [durH, setDurH] = useState(() => {
+    const src = existing?.durationMin ?? session.targetDurationMin;
+    if (!src) return "";
+    const t = minutesToTimeStr(src).split(":");
+    return t.length === 3 ? t[0] : "0";
+  });
+  const [durM, setDurM] = useState(() => {
+    const src = existing?.durationMin ?? session.targetDurationMin;
+    if (!src) return "";
+    const t = minutesToTimeStr(src).split(":");
+    return t.length === 3 ? t[1] : t.length === 2 ? t[0] : "0";
+  });
+  const [durS, setDurS] = useState(() => {
+    const src = existing?.durationMin ?? session.targetDurationMin;
+    if (!src) return "";
+    const t = minutesToTimeStr(src).split(":");
+    return t.length >= 2 ? t[t.length - 1] : "0";
+  });
+  // Combined string used for pace calculation and save
+  const dur = `${parseInt(durH) || 0}:${(parseInt(durM) || 0).toString().padStart(2, "0")}:${(parseInt(durS) || 0).toString().padStart(2, "0")}`;
   const [overallHr, setOverallHr] = useState(existing?.avgHr?.toString() ?? "");
   const [rpe, setRpe] = useState(existing?.rpe?.toString() ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
@@ -151,10 +165,21 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
               onChange={(e) => setDist(e.target.value)}
               style={inputStyle} placeholder={session.targetDistanceKm?.toString() ?? "0"} />
           </Field>
-          <Field label="DURATION (h:mm:ss)">
-            <input type="text" inputMode="numeric" value={dur}
-              onChange={(e) => setDur(e.target.value)}
-              style={inputStyle} placeholder="1:03:25" />
+          <Field label="DURATION">
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input type="number" inputMode="numeric" min={0} max={23}
+                value={durH} onChange={(e) => setDurH(e.target.value)}
+                style={{ ...inputStyle, width: "28%", textAlign: "center" }} placeholder="0" />
+              <span style={{ color: "var(--text-muted)", fontWeight: 700, fontSize: 16 }}>:</span>
+              <input type="number" inputMode="numeric" min={0} max={59}
+                value={durM} onChange={(e) => setDurM(e.target.value)}
+                style={{ ...inputStyle, width: "28%", textAlign: "center" }} placeholder="00" />
+              <span style={{ color: "var(--text-muted)", fontWeight: 700, fontSize: 16 }}>:</span>
+              <input type="number" inputMode="numeric" min={0} max={59}
+                value={durS} onChange={(e) => setDurS(e.target.value)}
+                style={{ ...inputStyle, width: "28%", textAlign: "center" }} placeholder="00" />
+              <span style={{ fontSize: 10, color: "var(--text-muted)", paddingLeft: 2 }}>h:m:s</span>
+            </div>
           </Field>
         </div>
 
