@@ -207,6 +207,18 @@ export default function StravaSync() {
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("mara-strava-collapsed") === "1";
+  });
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("mara-strava-collapsed", next ? "1" : "0");
+      return next;
+    });
+  }
 
   const loadStatus = useCallback(async () => {
     try {
@@ -245,6 +257,25 @@ export default function StravaSync() {
 
   // Strava orange
   const ORANGE = "#FC4C02";
+
+  if (collapsed) {
+    return (
+      <button
+        onClick={toggleCollapsed}
+        title="Show Strava sync"
+        style={{
+          position: "fixed", bottom: 80, right: 16, zIndex: 110,
+          width: 38, height: 38, borderRadius: "50%",
+          background: "var(--surface)", border: "1px solid var(--border)",
+          boxShadow: "0 2px 12px #0003",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", padding: 0,
+        }}
+      >
+        <StravaLogo />
+      </button>
+    );
+  }
 
   if (!status.connected) {
     return (
@@ -315,20 +346,33 @@ export default function StravaSync() {
             </a>
           </div>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          style={{
-            fontSize: 12, fontWeight: 600,
-            background: syncing ? "var(--surface-2)" : ORANGE,
-            color: "#fff",
-            border: "none", borderRadius: 8,
-            padding: "5px 10px", cursor: syncing ? "not-allowed" : "pointer",
-            flexShrink: 0, transition: "background 0.12s",
-          }}
-        >
-          {syncing ? "…" : "Sync"}
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, alignItems: "flex-end" }}>
+          <button
+            onClick={toggleCollapsed}
+            title="Hide"
+            style={{
+              fontSize: 14, lineHeight: 1, color: "var(--text-muted)",
+              background: "none", border: "none", cursor: "pointer",
+              padding: "0 2px", alignSelf: "flex-end",
+            }}
+          >
+            −
+          </button>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            style={{
+              fontSize: 12, fontWeight: 600,
+              background: syncing ? "var(--surface-2)" : ORANGE,
+              color: "#fff",
+              border: "none", borderRadius: 8,
+              padding: "5px 10px", cursor: syncing ? "not-allowed" : "pointer",
+              transition: "background 0.12s",
+            }}
+          >
+            {syncing ? "…" : "Sync"}
+          </button>
+        </div>
       </div>
 
       {showUnmatched && (
