@@ -20,6 +20,7 @@ import { moveSession } from "@/lib/planOps";
 import SessionCard from "./SessionCard";
 import CategoryPill from "./CategoryPill";
 import RecoveryStrip from "./RecoveryStrip";
+import AddSessionModal from "./AddSessionModal";
 import DailyReadout from "./DailyReadout";
 import type { DailyRecovery, PersonalBaseline } from "@/lib/types";
 import type { DailyLoadRec } from "@/lib/loadRecommendation";
@@ -73,6 +74,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
     container.scrollTo({ left: offset, behavior: "smooth" });
   }, [week.weekNo]);
   const [postMoveWarnings, setPostMoveWarnings] = useState<Warning[]>([]);
+  const [addForDate, setAddForDate] = useState<string | null>(null);
 
   // Optimistic session positions — reverts automatically after router.refresh()
   const [optimisticSessions, shiftSession] = useOptimistic(
@@ -265,7 +267,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
             return (
               <DroppableDay key={date} id={date}>
                 {/* Day header */}
-                <div className="day-header">
+                <div className="day-header" style={{ position: "relative" }}>
                   <span style={{
                     fontSize: 11,
                     fontWeight: 700,
@@ -283,12 +285,40 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
                       TODAY
                     </span>
                   )}
+                  {planId && (
+                    <button
+                      onClick={() => setAddForDate(date)}
+                      title="Add session"
+                      style={{
+                        position: "absolute", right: 0,
+                        width: 24, height: 24, borderRadius: 6,
+                        border: "1px solid var(--border)", background: "transparent",
+                        color: "var(--text-muted)", fontSize: 16, lineHeight: 1,
+                        cursor: "pointer", display: "flex", alignItems: "center",
+                        justifyContent: "center", padding: 0,
+                        WebkitTapHighlightColor: "transparent",
+                      }}
+                    >
+                      +
+                    </button>
+                  )}
                 </div>
 
                 {/* Sessions */}
                 <div className="day-sessions">
                   {sorted.length === 0 ? (
-                    <div className="day-empty">—</div>
+                    planId ? (
+                      <div
+                        className="day-empty"
+                        onClick={() => setAddForDate(date)}
+                        style={{ cursor: "pointer" }}
+                        title="Add session"
+                      >
+                        +
+                      </div>
+                    ) : (
+                      <div className="day-empty">—</div>
+                    )
                   ) : (
                     sorted.map((s) => (
                       <DraggableCard key={s.sk} session={s}>
@@ -298,6 +328,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
                           weekDates={weekDates}
                           warnings={warnMap[s.sk]}
                           ftpW={ftpW}
+                          planId={planId}
                         />
                       </DraggableCard>
                     ))
@@ -329,6 +360,20 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Add session modal — outside DndContext to avoid pointer capture conflicts */}
+      {addForDate && planId && (() => {
+        const daySessions = optimisticSessions.filter((s) => s.date === addForDate);
+        return (
+          <AddSessionModal
+            planId={planId}
+            weekNo={week.weekNo}
+            date={addForDate}
+            existingCount={daySessions.length}
+            onClose={() => setAddForDate(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   QueryCommand,
+  GetCommand,
   PutCommand,
   UpdateCommand,
   DeleteCommand,
@@ -11,6 +12,8 @@ import { planPk } from "@/lib/activePlan";
 import { buildTargetSnapshot } from "@/lib/zones";
 import type { Session, PlanMeta, ZoneSet, Actual, ZoneKey } from "@/lib/types";
 import { createHmac, timingSafeEqual as tse } from "crypto";
+import { addSession, splitSession, SameDayConflict } from "@/lib/planMutations";
+import type { NewSessionData, SplitPart } from "@/lib/planMutations";
 
 export const dynamic = "force-dynamic";
 
@@ -144,6 +147,13 @@ function err404(reason: string, opIndex: number, opType: string) {
   );
 }
 
+function err409(reason: string, opIndex: number, opType: string) {
+  return NextResponse.json(
+    { error: "Conflict", reason, opIndex, opType },
+    { status: 409, headers: noStore }
+  );
+}
+
 // ── POST /api/plan/mutate ─────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -256,6 +266,36 @@ export async function POST(req: NextRequest) {
         if (typeof actual.distanceKm !== "number") return err400("actual.distanceKm (number) required", i, t);
         if (typeof actual.durationMin !== "number") return err400("actual.durationMin (number) required", i, t);
       }
+    } else if (t === "addSession") {
+      const data = op.data as RawItem | null;
+      if (!data || typeof data !== "object") return err400("data object required", i, t);
+      if (typeof data.weekNo !== "number") return err400("data.weekNo (number) required", i, t);
+      if (typeof data.date !== "string") return err400("data.date (string) required", i, t);
+      const validCats = new Set(["easy","steady","mp","threshold","vo2","long","rest","race","bike","brick"]);
+      if (typeof data.category !== "string" || !validCats.has(data.category)) {
+        return err400("data.category must be a valid SessionCategory", i, t);
+      }
+      if (typeof data.title !== "string" || !data.title.trim()) {
+        return err400("data.title (non-empty string) required", i, t);
+      }
+
+    } else if (t === "splitSession") {
+      if (typeof op.sk !== "string" || !op.sk) return err400("sk (string) required", i, t);
+      const parts = op.parts as { part1?: RawItem; part2?: RawItem } | null;
+      if (!parts || typeof parts !== "object") return err400("parts object required", i, t);
+      if (!parts.part1 || typeof parts.part1.title !== "string" || !(parts.part1.title as string).trim()) {
+        return err400("parts.part1.title (non-empty string) required", i, t);
+      }
+      if (!parts.part2 || typeof parts.part2.title !== "string" || !(parts.part2.title as string).trim()) {
+        return err400("parts.part2.title (non-empty string) required", i, t);
+      }
+      // Confirm session exists
+      const chk = await docClient.send(new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { pk, sk: op.sk as string },
+      }));
+      if (!chk.Item) return err404(`session ${op.sk as string} not found`, i, t);
+
     } else {
       return err400(`unknown op type: "${t}"`, i, t);
     }
@@ -264,6 +304,7 @@ export async function POST(req: NextRequest) {
   // ── Phase 2: Build write list ─────────────────────────────────────────────
 
   const writes: WriteOp[] = [];
+  const directOps: RawItem[] = [];
   const opResults: { type: string; result: string }[] = [];
   const now = new Date().toISOString();
 
@@ -469,6 +510,11 @@ export async function POST(req: NextRequest) {
         type: t,
         result: `${session.sk} logged done (${actualInput.distanceKm}km / ${actualInput.durationMin}min)`,
       });
+
+    // ── addSession / splitSession — delegate to planMutations ────────────────
+    } else if (t === "addSession" || t === "splitSession") {
+      directOps.push(op);
+      opResults.push({ type: t, result: "queued" });
     }
   }
 
@@ -508,6 +554,36 @@ export async function POST(req: NextRequest) {
       { error: "Internal Server Error", detail: String(err) },
       { status: 500, headers: noStore }
     );
+  }
+
+  // ── Direct ops (addSession, splitSession) — run after transact ───────────
+  for (let i = 0; i < directOps.length; i++) {
+    const op = directOps[i];
+    const t = op.type as string;
+    const opIdx = opResults.findIndex((r, idx) => r.type === t && r.result === "queued" && idx >= i);
+
+    try {
+      if (t === "addSession") {
+        const data = op.data as NewSessionData;
+        const opts = op.opts as { allowSameDay?: boolean } | undefined;
+        const { sk } = await addSession(planId as string, data, opts);
+        if (opIdx !== -1) opResults[opIdx] = { type: t, result: `added ${sk}` };
+
+      } else if (t === "splitSession") {
+        const parts = op.parts as { part1: SplitPart; part2: SplitPart };
+        const { sk1, sk2 } = await splitSession(planId as string, op.sk as string, parts);
+        if (opIdx !== -1) opResults[opIdx] = { type: t, result: `split: ${sk1} → ${sk2}` };
+      }
+    } catch (err) {
+      if (err instanceof SameDayConflict) {
+        return err409((err as SameDayConflict).message, opIdx, t);
+      }
+      console.error(`[mutate] direct op ${t} error:`, err);
+      return NextResponse.json(
+        { error: "Internal Server Error", detail: String(err) },
+        { status: 500, headers: noStore }
+      );
+    }
   }
 
   return NextResponse.json(

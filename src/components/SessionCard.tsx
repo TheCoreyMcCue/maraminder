@@ -7,6 +7,8 @@ import LogModal from "./LogModal";
 import MoveModal from "./MoveModal";
 import { updateSessionStatus, unlogSession, logRestDay } from "@/lib/planOps";
 import EditSessionModal from "./EditSessionModal";
+import SplitSessionModal from "./SplitSessionModal";
+import { deleteSessionAction } from "@/lib/planActions";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -15,6 +17,7 @@ interface Props {
   weekDates: { date: string; dow: string; sessions: Session[] }[];
   warnings?: string[];
   ftpW?: number;
+  planId?: string;
   dragListeners?: Record<string, unknown>;
   dragAttributes?: Record<string, unknown>;
 }
@@ -33,16 +36,27 @@ const LOG_LABEL: Partial<Record<import("@/lib/types").SessionCategory, string>> 
 };
 
 export default function SessionCard({
-  session, zones, weekDates, warnings = [], ftpW,
+  session, zones, weekDates, warnings = [], ftpW, planId,
   dragListeners, dragAttributes,
 }: Props) {
   const [showLog, setShowLog] = useState(false);
   const [showMove, setShowMove] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showSplit, setShowSplit] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   const color = categoryColors[session.category];
   const isDone = session.status === "done";
   const isSkipped = session.status === "skipped";
+  const isSplittable = !isDone && !isSkipped && session.category !== "rest";
+
+  async function handleDelete() {
+    if (!planId) return;
+    setDeleting(true);
+    await deleteSessionAction(planId, session.sk);
+    router.refresh();
+  }
 
   async function handleSkip() {
     await updateSessionStatus(session.pk, session.sk, isSkipped ? "planned" : "skipped");
@@ -207,33 +221,57 @@ export default function SessionCard({
           </div>
         )}
 
-        {/* Action buttons — always 2×2 grid
-              logged:   Edit  · Unlog
-              planned:  Log   · Change
-                        Move  · Skip   (or Rest day · Skip for fill sessions) */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 12 }}>
-          {isDone ? (
-            <>
-              <Btn onClick={() => setShowLog(true)}>Edit</Btn>
-              <Btn onClick={handleUnlog} muted>Unlog</Btn>
-            </>
-          ) : (
-            <>
-              <Btn onClick={() => setShowLog(true)} disabled={isSkipped}>
-                {LOG_LABEL[session.category] ?? "Log"}
+        {/* Action buttons */}
+        {confirmDelete ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 12 }}>
+            <Btn onClick={() => setConfirmDelete(false)} muted>Cancel</Btn>
+            <Btn
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{ color: "#ef4444", borderColor: "#ef444455" }}
+            >
+              {deleting ? "Deleting…" : "Confirm delete"}
+            </Btn>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginTop: 12 }}>
+            {isDone ? (
+              <>
+                <Btn onClick={() => setShowLog(true)}>Edit</Btn>
+                <Btn onClick={handleUnlog} muted>Unlog</Btn>
+              </>
+            ) : (
+              <>
+                <Btn onClick={() => setShowLog(true)} disabled={isSkipped}>
+                  {LOG_LABEL[session.category] ?? "Log"}
+                </Btn>
+                <Btn onClick={() => setShowEdit(true)} disabled={isSkipped}>Change</Btn>
+                {isRestable ? (
+                  <Btn onClick={handleRestDay} accent>Rest day</Btn>
+                ) : (
+                  <Btn onClick={() => setShowMove(true)} disabled={isSkipped}>Move</Btn>
+                )}
+                <Btn onClick={handleSkip} muted>
+                  {isSkipped ? "Restore" : "Skip"}
+                </Btn>
+                {planId && isSplittable && (
+                  <Btn onClick={() => setShowSplit(true)} style={{ gridColumn: "span 2" }}>
+                    Split
+                  </Btn>
+                )}
+              </>
+            )}
+            {planId && (
+              <Btn
+                onClick={() => setConfirmDelete(true)}
+                muted
+                style={{ gridColumn: "span 2", color: "#ef444488" }}
+              >
+                Delete
               </Btn>
-              <Btn onClick={() => setShowEdit(true)} disabled={isSkipped}>Change</Btn>
-              {isRestable ? (
-                <Btn onClick={handleRestDay} accent>Rest day</Btn>
-              ) : (
-                <Btn onClick={() => setShowMove(true)} disabled={isSkipped}>Move</Btn>
-              )}
-              <Btn onClick={handleSkip} muted>
-                {isSkipped ? "Restore" : "Skip"}
-              </Btn>
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {showLog && (
@@ -259,15 +297,24 @@ export default function SessionCard({
           onMoved={handleMoved}
         />
       )}
+      {showSplit && planId && (
+        <SplitSessionModal
+          session={session}
+          planId={planId}
+          weekDates={weekDates}
+          onClose={() => setShowSplit(false)}
+        />
+      )}
     </>
   );
 }
 
-function Btn({ onClick, disabled, muted, accent, children }: {
+function Btn({ onClick, disabled, muted, accent, style, children }: {
   onClick: () => void;
   disabled?: boolean;
   muted?: boolean;
   accent?: boolean;
+  style?: React.CSSProperties;
   children: React.ReactNode;
 }) {
   return (
@@ -290,6 +337,7 @@ function Btn({ onClick, disabled, muted, accent, children }: {
         opacity: disabled ? 0.4 : 1,
         WebkitTapHighlightColor: "transparent",
         touchAction: "manipulation",
+        ...style,
       }}
     >
       {children}
