@@ -34,6 +34,7 @@ export interface Actual {
   restTaken?: boolean;  // true when a fill session was consciously swapped for full rest
   notes?: string;
   stravaUrl?: string;
+  stravaActivityId?: number;
   // Conditions
   tempC?: number;
   wind?: string;
@@ -135,7 +136,6 @@ export interface RecoveryReading {
   rhrBpm?: number;
   sleepHours?: number;
   sleepScore?: number;
-  readiness?: number;
   source: "shortcuts" | "manual" | "export-tool";
   note?: string;
   lifeStress?: number;  // 1–10 subjective scale

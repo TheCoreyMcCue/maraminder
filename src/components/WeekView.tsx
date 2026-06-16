@@ -21,6 +21,7 @@ import SessionCard from "./SessionCard";
 import CategoryPill from "./CategoryPill";
 import RecoveryStrip from "./RecoveryStrip";
 import AddSessionModal from "./AddSessionModal";
+import CoachChat from "./CoachChat";
 import DailyReadout from "./DailyReadout";
 import type { DailyRecovery, PersonalBaseline } from "@/lib/types";
 import type { DailyLoadRec } from "@/lib/loadRecommendation";
@@ -75,6 +76,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
   }, [week.weekNo]);
   const [postMoveWarnings, setPostMoveWarnings] = useState<Warning[]>([]);
   const [addForDate, setAddForDate] = useState<string | null>(null);
+  const [chatForDate, setChatForDate] = useState<string | null>(null);
 
   // Optimistic session positions — reverts automatically after router.refresh()
   const [optimisticSessions, shiftSession] = useOptimistic(
@@ -267,7 +269,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
             return (
               <DroppableDay key={date} id={date}>
                 {/* Day header */}
-                <div className="day-header" style={{ position: "relative" }}>
+                <div className="day-header">
                   <span style={{
                     fontSize: 11,
                     fontWeight: 700,
@@ -286,21 +288,36 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
                     </span>
                   )}
                   {planId && (
-                    <button
-                      onClick={() => setAddForDate(date)}
-                      title="Add session"
-                      style={{
-                        position: "absolute", right: 0,
-                        width: 24, height: 24, borderRadius: 6,
-                        border: "1px solid var(--border)", background: "transparent",
-                        color: "var(--text-muted)", fontSize: 16, lineHeight: 1,
-                        cursor: "pointer", display: "flex", alignItems: "center",
-                        justifyContent: "center", padding: 0,
-                        WebkitTapHighlightColor: "transparent",
-                      }}
-                    >
-                      +
-                    </button>
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 4, flexShrink: 0 }}>
+                      <button
+                        onClick={() => setChatForDate(date)}
+                        title="Ask coach"
+                        style={{
+                          width: 24, height: 24, borderRadius: 6,
+                          border: "1px solid var(--border)", background: "transparent",
+                          color: "var(--text-muted)", fontSize: 12, lineHeight: 1,
+                          cursor: "pointer", display: "flex", alignItems: "center",
+                          justifyContent: "center", padding: 0,
+                          WebkitTapHighlightColor: "transparent",
+                        }}
+                      >
+                        <CoachIcon />
+                      </button>
+                      <button
+                        onClick={() => setAddForDate(date)}
+                        title="Add session"
+                        style={{
+                          width: 24, height: 24, borderRadius: 6,
+                          border: "1px solid var(--border)", background: "transparent",
+                          color: "var(--text-muted)", fontSize: 16, lineHeight: 1,
+                          cursor: "pointer", display: "flex", alignItems: "center",
+                          justifyContent: "center", padding: 0,
+                          WebkitTapHighlightColor: "transparent",
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -374,6 +391,19 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
           />
         );
       })()}
+
+      {/* Coach chat — outside DndContext */}
+      {chatForDate && planId && (() => {
+        const entry = weekDates.find((d) => d.date === chatForDate);
+        return (
+          <CoachChat
+            planId={planId}
+            focusDate={chatForDate}
+            focusDow={entry?.dow ?? ""}
+            onClose={() => setChatForDate(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -439,6 +469,17 @@ function fmtDuration(minutes: number): string {
   const m = Math.round(minutes % 60);
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function CoachIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 1C3.686 1 1 3.239 1 6c0 1.37.62 2.607 1.63 3.5L2 13l3.5-1.5C5.96 11.66 6.47 11.75 7 11.75 10.314 11.75 13 9.511 13 6.875" />
+      <path d="M10 1.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z" />
+      <line x1="10" y1="3.25" x2="10" y2="4.75" />
+      <circle cx="10" cy="5.5" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
 }
 
 function formatRange(start: string, end: string) {

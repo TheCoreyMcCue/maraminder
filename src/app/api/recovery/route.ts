@@ -34,7 +34,6 @@ export async function POST(req: NextRequest) {
     rhrBpm:     num(body.rhrBpm),
     sleepHours: num(body.sleepHours),
     sleepScore: num(body.sleepScore),
-    readiness:  num(body.readiness),
     lifeStress: num(body.lifeStress),
     legFatigue: num(body.legFatigue),
     source: (body.source as "shortcuts" | "manual" | "export-tool") ?? "shortcuts",

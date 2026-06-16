@@ -7,6 +7,7 @@ import { getPersonalBaseline } from "@/lib/baselineOps";
 import { getDailyLoadRec } from "@/lib/loadRecommendation";
 import { computeLoadFactor } from "@/lib/loadFactor";
 import WeekView from "@/components/WeekView";
+import StravaSync from "@/components/StravaSync";
 
 export default async function Home() {
   const planId = await getActivePlanId();
@@ -56,19 +57,22 @@ export default async function Home() {
   const loadFactor = computeLoadFactor(today, plan.sessions, allRecovery, baseline);
 
   return (
-    <WeekView
-      week={currentWeek}
-      sessions={weekSessions}
-      zones={plan.currentZones}
-      allWeeks={plan.weeks}
-      meta={plan.meta}
-      recoveryDays={recoveryDays}
-      today={today}
-      planId={planId}
-      dailyRec={dailyRec}
-      loadFactor={loadFactor}
-      baseline={baseline}
-      ftpW={baseline.ftpW}
-    />
+    <>
+      <WeekView
+        week={currentWeek}
+        sessions={weekSessions}
+        zones={plan.currentZones}
+        allWeeks={plan.weeks}
+        meta={plan.meta}
+        recoveryDays={recoveryDays}
+        today={today}
+        planId={planId}
+        dailyRec={dailyRec}
+        loadFactor={loadFactor}
+        baseline={baseline}
+        ftpW={baseline.ftpW}
+      />
+      <StravaSync />
+    </>
   );
 }

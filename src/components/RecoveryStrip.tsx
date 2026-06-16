@@ -192,9 +192,6 @@ function RecoveryDetailModal({ day, onClose, onEdit }: {
               higherBetter
             />
           )}
-          {r.readiness != null && (
-            <MetricRow label="Readiness" value={`${r.readiness}`} higherBetter />
-          )}
         </div>
 
         {r.note && (
