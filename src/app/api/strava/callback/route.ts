@@ -45,11 +45,12 @@ export async function GET(req: NextRequest) {
     expires_at: number;
   };
 
+  // Don't pass lastSyncEpoch — saveTokenRecord preserves the existing value via spread,
+  // so reconnecting doesn't reset sync progress. Fresh connects get the sync route's default.
   await saveTokenRecord({
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at,
-    lastSyncEpoch: 0,
   });
 
   return NextResponse.redirect(`${baseUrl}/?strava=connected`);

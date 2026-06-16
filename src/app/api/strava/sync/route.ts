@@ -91,13 +91,22 @@ async function runSync(): Promise<{
   const token = await getTokenRecord();
   if (!token) throw new Error("Strava not connected");
 
-  const lastSyncEpoch = token.lastSyncEpoch ?? 0;
+  // Never look further back than 90 days — guards against a stored epoch from ancient
+  // activity history advancing the window into pre-plan activities on each sync.
+  const ninetyDaysAgo = Math.floor(Date.now() / 1000) - 90 * 24 * 60 * 60;
+  const lastSyncEpoch = Math.max(token.lastSyncEpoch ?? 0, ninetyDaysAgo);
 
-  // Fetch activities after lastSyncEpoch (newest first, one page)
-  const activities = await stravaFetch<StravaActivity[]>("/athlete/activities", {
-    after: lastSyncEpoch,
-    per_page: 50,
-  });
+  // Paginate through all activities after lastSyncEpoch (Strava max 200/page)
+  const activities: StravaActivity[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const batch = await stravaFetch<StravaActivity[]>("/athlete/activities", {
+      after: lastSyncEpoch,
+      per_page: 200,
+      page,
+    });
+    activities.push(...batch);
+    if (batch.length < 200) break;
+  }
 
   if (!activities.length) {
     return { matched: 0, unmatched: 0, skipped: 0, total: 0 };
@@ -136,11 +145,11 @@ async function runSync(): Promise<{
       // Clean match — auto-apply
       const { planId, session } = candidates[0];
       const actual = {
-        distanceKm: parseFloat((activity.distance / 1000).toFixed(3)),
+        distanceKm: parseFloat((activity.distance / 1000).toFixed(2)),
         durationMin: parseFloat((activity.moving_time / 60).toFixed(1)),
         avgPacePerKm: broadType === "run" ? paceFromActivity(activity) : undefined,
-        avgHr: activity.average_heartrate ?? undefined,
-        avgPowerW: activity.average_watts ?? undefined,
+        avgHr: activity.average_heartrate != null ? Math.round(activity.average_heartrate) : undefined,
+        avgPowerW: activity.average_watts != null ? Math.round(activity.average_watts) : undefined,
         stravaUrl: `https://www.strava.com/activities/${activity.id}`,
         stravaActivityId: activity.id,
       };
@@ -170,9 +179,9 @@ async function runSync(): Promise<{
             activityName: activity.name,
             date: localDate,
             sportType: activity.sport_type ?? activity.type,
-            distanceKm: parseFloat((activity.distance / 1000).toFixed(3)),
+            distanceKm: parseFloat((activity.distance / 1000).toFixed(2)),
             durationMin: parseFloat((activity.moving_time / 60).toFixed(1)),
-            avgHr: activity.average_heartrate ?? null,
+            avgHr: activity.average_heartrate != null ? Math.round(activity.average_heartrate) : null,
             avgPacePerKm: broadType === "run" ? (paceFromActivity(activity) ?? null) : null,
             stravaUrl: `https://www.strava.com/activities/${activity.id}`,
             candidateSessions: candidateInfo,

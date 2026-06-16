@@ -174,15 +174,10 @@ export default function SessionCard({
             ) : (
               <>
                 <span style={{ color: "#22c55e", fontWeight: 700 }}>Logged: </span>
-                {session.actual.distanceKm}km
+                {session.actual.distanceKm.toFixed(2)}km
                 {session.actual.avgPacePerKm && ` · ${session.actual.avgPacePerKm}/km`}
                 {session.actual.avgPowerW && ` · ${session.actual.avgPowerW}W`}
-                {session.actual.avgPowerW && ftpW && (
-                  <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                    {" "}(IF {(session.actual.avgPowerW / ftpW).toFixed(2)})
-                  </span>
-                )}
-                {session.actual.avgHr && ` · ${session.actual.avgHr} bpm`}
+                {session.actual.avgHr && ` · ${Math.round(session.actual.avgHr)} bpm`}
                 {session.actual.rpe && ` · RPE ${session.actual.rpe}`}
                 {session.actual.notes && (
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>

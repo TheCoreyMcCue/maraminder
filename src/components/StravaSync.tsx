@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { StravaUnmatched } from "@/lib/strava";
 
 interface Status {
@@ -200,6 +201,7 @@ function UnmatchedSheet({ onClose, onApplied }: { onClose: () => void; onApplied
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function StravaSync() {
+  const router = useRouter();
   const [status, setStatus] = useState<Status | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
@@ -230,6 +232,7 @@ export default function StravaSync() {
       } else {
         setSyncResult(data);
         await loadStatus();
+        if (data.matched > 0) router.refresh();
       }
     } catch {
       setError("Network error — try again");
