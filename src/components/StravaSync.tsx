@@ -31,6 +31,7 @@ function UnmatchedSheet({ onClose, onApplied }: { onClose: () => void; onApplied
   const [items, setItems] = useState<StravaUnmatched[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<number | null>(null);
+  const [dismissingAll, setDismissingAll] = useState(false);
 
   useEffect(() => {
     fetch("/api/strava/unmatched")
@@ -38,6 +39,25 @@ function UnmatchedSheet({ onClose, onApplied }: { onClose: () => void; onApplied
       .then(setItems)
       .finally(() => setLoading(false));
   }, []);
+
+  async function dismissAll() {
+    setDismissingAll(true);
+    try {
+      await Promise.all(
+        items.map((item) =>
+          fetch("/api/strava/unmatched", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "dismiss", activityId: item.activityId }),
+          })
+        )
+      );
+      setItems([]);
+      onApplied();
+    } finally {
+      setDismissingAll(false);
+    }
+  }
 
   async function handleAction(
     activityId: number,
@@ -70,12 +90,27 @@ function UnmatchedSheet({ onClose, onApplied }: { onClose: () => void; onApplied
           <div className="sheet-handle" style={{ margin: "0 auto 12px" }} />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>Unmatched imports</div>
-            <button
-              onClick={onClose}
-              style={{ fontSize: 22, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px" }}
-            >
-              ×
-            </button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {items.length > 0 && (
+                <button
+                  onClick={dismissAll}
+                  disabled={dismissingAll}
+                  style={{
+                    fontSize: 12, padding: "4px 10px", borderRadius: 6,
+                    border: "1px solid var(--border)", color: "var(--text-muted)",
+                    background: "none", cursor: dismissingAll ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {dismissingAll ? "Dismissing…" : "Dismiss all"}
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                style={{ fontSize: 22, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px" }}
+              >
+                ×
+              </button>
+            </div>
           </div>
         </div>
 

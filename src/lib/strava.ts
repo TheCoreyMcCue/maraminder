@@ -60,27 +60,26 @@ export async function saveTokenRecord(
   );
 }
 
-// Bootstrap from env var tokens on first use, or re-seed if STRAVA_REFRESH_TOKEN
-// in env differs from what's stored (e.g. user pasted new tokens from Strava's API page).
+// Bootstrap from env var tokens only when no DynamoDB record exists yet.
+// Once any token is stored (including via OAuth callback), this is a no-op.
 async function ensureBootstrapped(): Promise<void> {
+  const existing = await getTokenRecord();
+  if (existing) return;
+
   const envRefreshToken = process.env.STRAVA_REFRESH_TOKEN;
   if (!envRefreshToken) return;
-
-  const existing = await getTokenRecord();
-  // Skip if stored token matches env — already bootstrapped and rotated normally
-  if (existing && existing.refresh_token === envRefreshToken) return;
 
   const accessToken = process.env.STRAVA_ACCESS_TOKEN;
   await docClient.send(
     new PutCommand({
       TableName: TABLE_NAME,
       Item: {
-        ...(existing ?? {}),
         pk: STRAVA_PK,
         sk: TOKEN_SK,
         access_token: accessToken ?? "",
         refresh_token: envRefreshToken,
-        expires_at: 0, // force immediate refresh so we get a rotated token ASAP
+        expires_at: 0, // force immediate refresh
+        lastSyncEpoch: 0,
       },
     })
   );
