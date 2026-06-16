@@ -1,25 +1,31 @@
 import type { RecoveryReading, Session, PersonalBaseline } from "./types";
 
-// Estimated RPE per category — used when RPE is not logged
-// (Session-RPE method: load = durationMin × RPE, unit-agnostic across run/bike/brick)
-const EST_RPE_FALLBACK: Record<string, number> = {
-  easy: 3.5, steady: 5, mp: 6, threshold: 7, vo2: 8.5,
-  long: 4.5, race: 8.5, bike: 3.5, brick: 7, rest: 0,
-};
-
 export type LoadLevel = "green" | "amber" | "red" | "critical";
 
+// ── ACWR transfer-function breakpoints (tunable) ──────────
+const ACWR_LOW      = 0.8;   // below → under-training territory
+const ACWR_SAFE_HI  = 1.3;   // safe band upper edge
+const ACWR_WARN_HI  = 1.5;   // caution zone upper edge
+const ACWR_DANGER   = 1.8;   // score maxes out here
+
+// ── Banister TRIMP defaults ───────────────────────────────
+const HR_MAX_DEFAULT  = 194;
+const HR_REST_DEFAULT = 47;
+
+// Category HRR estimates — used only when no HR/RPE is logged.
+// HRR = (avgHr - HRrest) / (HRmax - HRrest).
+const CAT_HRR: Record<string, number> = {
+  easy: 0.55, steady: 0.75, mp: 0.82, threshold: 0.88, vo2: 0.95,
+  long: 0.60, race: 0.90, bike: 0.55, brick: 0.75, rest: 0,
+};
+
+// Typical HRR for seeding chronic load from typicalWeeklyHours.
+const TYPICAL_HRR = 0.65;
+
 // Once this many sessions are logged, actual data drives the chronic load fully.
-// Below it, we blend with the seeded baseline so ACWR is meaningful from day 1.
 const MIN_LOGGED_FOR_FULL_ACWR = 10;
 
-// Average RPE used to convert typical weekly hours → load units
-const TYPICAL_RPE = 4.5;
-
 // Component weights — must sum to 100.
-// Recovery and training are the dominant physiological signals.
-// Fatigue and life stress are secondary modifiers (10 pts max each),
-// so a 3/10 leg-fatigue score contributes ~3, not 7–8.
 const W = { training: 40, recovery: 40, fatigue: 10, life: 10 } as const;
 
 export interface LoadFactorResult {
@@ -32,6 +38,8 @@ export interface LoadFactorResult {
     ratio: number;
     score: number;        // 0–40
     insufficient: boolean;
+    taperCapped: boolean;
+    acwrColor: string;    // green / amber / red by zone
   };
   legFatigue: {
     value: number | null;
@@ -50,26 +58,54 @@ export interface LoadFactorResult {
   insight: string;
 }
 
+// ── Helpers ───────────────────────────────────────────────
+
+function lerp(x: number, x0: number, x1: number, y0: number, y1: number): number {
+  return y0 + (y1 - y0) * Math.min(1, Math.max(0, (x - x0) / (x1 - x0)));
+}
+
+function acwrToScore(acwr: number): number {
+  if (acwr <= ACWR_LOW)     return lerp(acwr, 0,         ACWR_LOW,     0,  4);
+  if (acwr <= ACWR_SAFE_HI) return lerp(acwr, ACWR_LOW,  ACWR_SAFE_HI, 4,  10);
+  if (acwr <= ACWR_WARN_HI) return lerp(acwr, ACWR_SAFE_HI, ACWR_WARN_HI, 10, 28);
+  return Math.min(40, lerp(acwr, ACWR_WARN_HI, ACWR_DANGER, 28, 40));
+}
+
+function acwrColor(acwr: number): string {
+  if (acwr > ACWR_WARN_HI) return "#ef4444";
+  if (acwr > ACWR_SAFE_HI) return "#f59e0b";
+  return "#22c55e";
+}
+
 // ── Main entry ────────────────────────────────────────────
 
 export function computeLoadFactor(
   today: string,
   sessions: Session[],
   readings: RecoveryReading[],
-  baseline: PersonalBaseline
+  baseline: PersonalBaseline,
+  currentWeek?: { phase: string; isDownWeek: boolean }
 ): LoadFactorResult {
 
   const ftpW = baseline.ftpW;
   const typicalWeeklyHours = baseline.typicalWeeklyHours;
+  const hrMax = baseline.hrMax ?? HR_MAX_DEFAULT;
+  const hrRest = baseline.hrRest ?? HR_REST_DEFAULT;
+
+  const isTaperWeek = currentWeek != null && (
+    currentWeek.isDownWeek ||
+    /taper|race|down/i.test(currentWeek.phase)
+  );
 
   // ── Training load (ACWR) ──
-  const { acute, chronic, insufficient } = computeTrainingLoad(today, sessions, ftpW, typicalWeeklyHours);
+  const { acute, chronic, insufficient } = computeTrainingLoad(today, sessions, ftpW, typicalWeeklyHours, hrMax, hrRest);
   const acwr = insufficient || chronic === 0
     ? 0
     : acute / chronic;
-  const trainingScore = insufficient
-    ? 0
-    : Math.round(Math.min(W.training, (acwr / 1.5) * W.training)); // 0–40
+  const rawTrainingScore = insufficient ? 0 : Math.round(acwrToScore(acwr));
+  const trainingScore = isTaperWeek
+    ? Math.min(10, rawTrainingScore)
+    : rawTrainingScore;
 
   // ── Leg fatigue (today's reading, direct signal) ──
   const todayFatigue = readings.find((r) => r.date === today)?.legFatigue ?? null;
@@ -121,35 +157,49 @@ export function computeLoadFactor(
     score,
     level,
     restBonus,
-    training:        { acute, chronic, ratio: Math.round(acwr * 100) / 100, score: trainingScore, insufficient },
+    training: {
+      acute, chronic,
+      ratio: Math.round(acwr * 100) / 100,
+      score: trainingScore,
+      insufficient,
+      taperCapped: isTaperWeek && rawTrainingScore > 10,
+      acwrColor: acwrColor(acwr),
+    },
     legFatigue:      { value: todayFatigue, score: fatigueScore },
     recoveryDeficit: { hrvZ, rhrZ, score: recoveryScore },
     lifeStress:      { avg: lifeAvg != null ? Math.round(lifeAvg * 10) / 10 : null, score: lifeScore },
-    ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient, restTakenToday,
+    ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient, restTakenToday, isTaperWeek,
       { trainingScore, fatigueScore, recoveryScore, lifeScore }),
   };
 }
 
 // ── Training load helpers ─────────────────────────────────
 
-// Returns load in RPE×min units (or TSS×6 for power-based, to keep same scale).
-// Never uses km as a proxy — cycling km ≠ running km in physiological terms.
-function sessionLoad(s: Session, ftpW?: number): number {
+// Banister TRIMP for a single session.
+// One unified load currency across run/bike regardless of how data was captured.
+function sessionLoad(s: Session, ftpW?: number, hrMax = HR_MAX_DEFAULT, hrRest = HR_REST_DEFAULT): number {
   const a = s.actual;
+  const dur = a?.durationMin ?? s.targetDurationMin ?? 0;
+  if (!dur) return 0;
 
-  // Power-based TSS for cycling when power + FTP are available
-  // TSS = (durationHours × avgPower²/FTP²) × 100
-  // Scaled ×6 to match RPE×duration units (1hr @ threshold ≈ 420 both ways)
+  // Power-based: convert TSS → TRIMP-equivalent via same hrr path.
+  // Derive effective HRR from IF (avgPower/FTP) ≈ hrr proxy for consistency.
   if ((s.category === "bike" || s.category === "brick") && a?.avgPowerW && ftpW) {
-    const hrs = (a.durationMin ?? 0) / 60;
-    const tss = hrs * Math.pow(a.avgPowerW / ftpW, 2) * 100;
-    return tss * 6;
+    const hrr = Math.min(1, Math.max(0, a.avgPowerW / ftpW));
+    return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
   }
 
-  // RPE × duration (Session-RPE method — unit-agnostic: works for run, bike, brick)
-  const dur = a?.durationMin ?? s.targetDurationMin ?? 0;
-  const rpe = a?.rpe ?? EST_RPE_FALLBACK[s.category] ?? 5;
-  return dur * rpe;
+  // Derive HRR from best available source, then run Banister formula uniformly.
+  let hrr: number;
+  if (a?.avgHr != null) {
+    hrr = Math.min(1, Math.max(0, (a.avgHr - hrRest) / (hrMax - hrRest)));
+  } else if (a?.rpe != null) {
+    hrr = Math.min(1, Math.max(0, a.rpe / 10));
+  } else {
+    hrr = CAT_HRR[s.category] ?? 0.65;
+  }
+
+  return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
 }
 
 function isoMinusDays(iso: string, days: number): string {
@@ -162,7 +212,9 @@ function computeTrainingLoad(
   today: string,
   sessions: Session[],
   ftpW?: number,
-  typicalWeeklyHours?: number
+  typicalWeeklyHours?: number,
+  hrMax = HR_MAX_DEFAULT,
+  hrRest = HR_REST_DEFAULT,
 ): { acute: number; chronic: number; insufficient: boolean } {
   const day7  = isoMinusDays(today, 7);
   const day28 = isoMinusDays(today, 28);
@@ -173,21 +225,20 @@ function computeTrainingLoad(
 
   const acute = done
     .filter((s) => s.date > day7)
-    .reduce((sum, s) => sum + sessionLoad(s, ftpW), 0);
+    .reduce((sum, s) => sum + sessionLoad(s, ftpW, hrMax, hrRest), 0);
 
-  // Seeded chronic from the user's known typical load.
-  // typicalWeeklyHours × 60min × TYPICAL_RPE = weekly load units (7-day equivalent).
+  // Seeded chronic: convert typicalWeeklyHours to TRIMP using TYPICAL_HRR.
+  // durationMin/week × hrr × 0.64 × exp(1.92 × hrr) = weekly TRIMP equivalent.
   const seededChronic = typicalWeeklyHours
-    ? typicalWeeklyHours * 60 * TYPICAL_RPE
+    ? typicalWeeklyHours * 60 * TYPICAL_HRR * 0.64 * Math.exp(1.92 * TYPICAL_HRR)
     : 0;
 
-  // Data-driven chronic from logged sessions.
+  // Data-driven chronic: 28-day total normalised to a 7-day window.
   const dataChronic = done.length > 0
-    ? (done.reduce((sum, s) => sum + sessionLoad(s, ftpW), 0) / 28) * 7
+    ? (done.reduce((sum, s) => sum + sessionLoad(s, ftpW, hrMax, hrRest), 0) / 28) * 7
     : 0;
 
   // Blend: weight shifts from seeded → data as more sessions accumulate.
-  // At 0 sessions: fully seeded. At MIN_LOGGED sessions: fully data-driven.
   const dataWeight = Math.min(1, done.length / MIN_LOGGED_FOR_FULL_ACWR);
   const chronic = seededChronic > 0
     ? seededChronic * (1 - dataWeight) + dataChronic * dataWeight
@@ -214,21 +265,28 @@ function buildCopy(
   score: number,
   insufficient: boolean,
   restTaken: boolean = false,
+  isTaperWeek: boolean = false,
   components?: { trainingScore: number; fatigueScore: number; recoveryScore: number; lifeScore: number }
 ): { headline: string; insight: string } {
   const parts: string[] = [];
 
-  // Dominant driver headline — avoids "reduce load" when training is light
   const dominant = components
     ? Object.entries(components).sort((a, b) => b[1] - a[1])[0][0]
     : null;
 
   if (insufficient) {
     parts.push(`training history building (need ${MIN_LOGGED_FOR_FULL_ACWR} logged sessions for full ACWR)`);
-  } else if (acwr > 1.3) parts.push(`acute:chronic ratio ${acwr.toFixed(2)} — above the safe window`);
-  else if (acwr >= 0.8) parts.push(`training load in range (ACWR ${acwr.toFixed(2)})`);
-  else if (acwr >= 0.3) parts.push(`light training week so far (ACWR ${acwr.toFixed(2)})`);
-  else if (acwr > 0) parts.push(`very light load today (ACWR ${acwr.toFixed(2)}) — taper / recovery week`);
+  } else if (isTaperWeek) {
+    parts.push(`taper/down week — load ratio reads high by design, not a concern (ACWR ${acwr.toFixed(2)})`);
+  } else if (acwr > ACWR_SAFE_HI) {
+    parts.push(`acute:chronic ratio ${acwr.toFixed(2)} — above the safe window`);
+  } else if (acwr >= ACWR_LOW) {
+    parts.push(`training load in range (ACWR ${acwr.toFixed(2)})`);
+  } else if (acwr >= 0.3) {
+    parts.push(`light training week so far (ACWR ${acwr.toFixed(2)})`);
+  } else if (acwr > 0) {
+    parts.push(`very light load today (ACWR ${acwr.toFixed(2)}) — taper / recovery week`);
+  }
 
   if (legFatigue != null) {
     if (legFatigue >= 8) parts.push(`legs very heavy (${legFatigue}/10) — significant accumulated fatigue`);
@@ -256,38 +314,26 @@ function buildCopy(
 
   if (restTaken) parts.push("full rest taken today — recovery investment applied ✦");
 
-  // Headline driven by dominant component so it always matches what's actually happening
   const dominantHeadline = (): string => {
+    if (isTaperWeek) return "Taper/down week — body absorbing the work";
     if (level === "green") return acwr > 1.0 ? "Strong adaptation signal" : "Body load manageable";
     if (level === "critical") return "Critical load — pull back now";
-    // amber / red: pick headline based on what's actually driving the score
     if (dominant === "recoveryScore") {
-      return level === "red"
-        ? "Recovery down — easy day only"
-        : "Recovery dip — keep today easy";
+      return level === "red" ? "Recovery down — easy day only" : "Recovery dip — keep today easy";
     }
     if (dominant === "trainingScore") {
-      return level === "red"
-        ? "Load too high — back off"
-        : "Load building — stay intentional";
+      return level === "red" ? "Load too high — back off" : "Load building — stay intentional";
     }
     if (dominant === "fatigueScore") {
-      return level === "red"
-        ? "Heavy legs — rest or very easy"
-        : "Legs reporting fatigue — protect intensity";
+      return level === "red" ? "Heavy legs — rest or very easy" : "Legs reporting fatigue — protect intensity";
     }
     if (dominant === "lifeScore") {
-      return level === "red"
-        ? "Life stress high — guard recovery"
-        : "Life stress elevated — stay intentional";
+      return level === "red" ? "Life stress high — guard recovery" : "Life stress elevated — stay intentional";
     }
     return level === "red" ? "High load — recovery is the priority" : "Load building — stay intentional";
   };
 
   const headline = restTaken ? `${dominantHeadline()} · rest day ✦` : dominantHeadline();
 
-  return {
-    headline,
-    insight: parts.join(". ") + ".",
-  };
+  return { headline, insight: parts.join(". ") + "." };
 }

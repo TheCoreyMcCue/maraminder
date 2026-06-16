@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
         return err400("fields (non-empty object) required", i, t);
       }
       const allowed = new Set([
-        "goalPace", "goalTime", "raceDate", "halfDate",
+        "goalPace", "goalTime", "raceDate", "halfDate", "triDate",
         "startDate", "name", "currentZoneVersion",
       ]);
       const unknown = Object.keys(fields).filter((k) => !allowed.has(k));

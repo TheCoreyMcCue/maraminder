@@ -166,8 +166,13 @@ function LoadFactorGauge({ lf }: { lf: LoadFactorResult }) {
       max: 40,
       detail: lf.training.insufficient
         ? "building history…"
-        : `ACWR ${lf.training.ratio.toFixed(2)}`,
+        : lf.training.taperCapped
+          ? `ACWR ${lf.training.ratio.toFixed(2)} · taper`
+          : `ACWR ${lf.training.ratio.toFixed(2)}`,
       muted: lf.training.insufficient,
+      barColor: lf.training.insufficient ? undefined
+        : lf.training.taperCapped ? "#22c55e"
+        : lf.training.acwrColor,
     },
     {
       label: "Recovery",
@@ -229,27 +234,29 @@ function LoadFactorGauge({ lf }: { lf: LoadFactorResult }) {
 
       {/* Component breakdown */}
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        {components.map((c) => (
+        {components.map((c) => {
+          const barCol = c.muted ? "var(--text-muted)" : ("barColor" in c && c.barColor) ? c.barColor : color;
+          return (
           <div key={c.label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px 80px", gap: 8, alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{c.label}</span>
             <div style={{ height: 4, background: "var(--border)", borderRadius: 2 }}>
               <div style={{
                 height: "100%",
                 width: `${(c.score / c.max) * 100}%`,
-                background: c.muted ? "var(--text-muted)" : color,
+                background: barCol,
                 borderRadius: 2,
                 transition: "width 0.3s",
                 opacity: c.muted ? 0.4 : 1,
               }} />
             </div>
-            <span style={{ fontSize: 11, fontWeight: 600, color: c.muted ? "var(--text-muted)" : color, textAlign: "right" }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: c.muted ? "var(--text-muted)" : barCol, textAlign: "right" }}>
               {c.score}
             </span>
             <span style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.7, fontStyle: c.muted ? "italic" : "normal" }}>
               {c.detail}
             </span>
           </div>
-        ))}
+        );})}
       </div>
 
       {/* Rest bonus */}

@@ -54,7 +54,7 @@ export default async function Home() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 3);
   const dailyRec = getDailyLoadRec(todayRecovery, baseline, todaySessions, recent3);
-  const loadFactor = computeLoadFactor(today, plan.sessions, allRecovery, baseline);
+  const loadFactor = computeLoadFactor(today, plan.sessions, allRecovery, baseline, currentWeek);
 
   return (
     <>

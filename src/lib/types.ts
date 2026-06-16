@@ -98,6 +98,7 @@ export interface PlanMeta {
   name: string;
   raceDate: string;
   halfDate: string;
+  triDate?: string;
   startDate: string;
   goalTime: string;
   goalPace: string;
@@ -120,6 +121,8 @@ export interface PersonalBaseline {
   rhr:   { mean: number; sd: number };
   sleepTargetHours: number;
   ftpW?: number;
+  hrMax?: number;   // used for Banister TRIMP; defaults to 194
+  hrRest?: number;  // used for Banister TRIMP; defaults to 47
   // Seeds the 28-day chronic load when app history is sparse.
   // Reflects pre-app training so ACWR isn't misleadingly high on day 1.
   typicalWeeklyHours?: number;

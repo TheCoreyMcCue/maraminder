@@ -143,8 +143,11 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
     .reduce((sum, s) => sum + (s.actual!.durationMin || 0), 0);
   const doneCount = optimisticSessions.filter((s) => s.status === "done").length;
   const totalCount = optimisticSessions.filter((s) => s.status !== "skipped").length;
+  const nextRaceDate = meta.triDate && today && meta.triDate >= today
+    ? meta.triDate
+    : meta.raceDate;
   const daysToRace = today
-    ? Math.ceil((new Date(meta.raceDate).getTime() - new Date(today).getTime()) / 86_400_000)
+    ? Math.ceil((new Date(nextRaceDate).getTime() - new Date(today).getTime()) / 86_400_000)
     : null;
 
   const activeSession = activeId ? optimisticSessions.find((s) => s.sk === activeId) : null;

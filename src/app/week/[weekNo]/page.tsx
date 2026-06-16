@@ -53,7 +53,7 @@ export default async function WeekPage({ params }: Props) {
   })() : undefined;
 
   const loadFactor = isCurrentWeek
-    ? computeLoadFactor(today, plan.sessions, allRecovery, baseline)
+    ? computeLoadFactor(today, plan.sessions, allRecovery, baseline, week)
     : undefined;
 
   return (

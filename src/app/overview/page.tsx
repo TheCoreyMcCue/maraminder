@@ -27,8 +27,11 @@ export default async function OverviewPage() {
     sessionsByWeek[s.weekNo].push(s);
   }
 
+  const nextRaceDate = plan.meta.triDate && plan.meta.triDate >= today
+    ? plan.meta.triDate
+    : plan.meta.raceDate;
   const daysToRace = Math.ceil(
-    (new Date(plan.meta.raceDate).getTime() - Date.now()) / 86_400_000
+    (new Date(nextRaceDate).getTime() - Date.now()) / 86_400_000
   );
 
   return (
@@ -41,8 +44,11 @@ export default async function OverviewPage() {
       </div>
 
       {/* Race pins */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
-        <PinCard label="Half Marathon" date={plan.meta.halfDate} icon="🏃" color="#f59e0b" />
+      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+        {plan.meta.triDate && (
+          <PinCard label="Westfriesland 70.3" date={plan.meta.triDate} icon="🏊" color="#6366f1" />
+        )}
+        <PinCard label="Haarlem Half Marathon" date={plan.meta.halfDate} icon="🏃" color="#f59e0b" />
         <PinCard label="Amsterdam Marathon" date={plan.meta.raceDate} icon="🏁" color="#f97316" />
       </div>
 
