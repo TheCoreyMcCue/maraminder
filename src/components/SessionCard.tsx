@@ -125,14 +125,9 @@ export default function SessionCard({
         )}
 
         {/* Category + anchor badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, paddingRight: dragListeners ? 28 : 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: session.type === "anchor" ? 3 : 6, paddingRight: dragListeners ? 28 : 0 }}>
           <CategoryPill category={session.category} />
-          {session.type === "anchor" && (
-            <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.06em" }}>
-              ANCHOR
-            </span>
-          )}
-          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             {isDone && <span style={{ fontSize: 16, color: "#22c55e" }}>✓</span>}
             <button
               onClick={() => setShowDetail(true)}
@@ -146,6 +141,11 @@ export default function SessionCard({
             </button>
           </span>
         </div>
+        {session.type === "anchor" && (
+          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.06em", marginBottom: 6 }}>
+            ANCHOR
+          </div>
+        )}
 
         {/* Title */}
         <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)", marginBottom: 3, lineHeight: 1.3 }}>
