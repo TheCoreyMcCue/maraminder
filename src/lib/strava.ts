@@ -60,26 +60,27 @@ export async function saveTokenRecord(
   );
 }
 
-// Bootstrap from env var tokens on first use (Strava dashboard credentials).
-// Sets expires_at=0 so the refresh flow runs immediately and persists a valid token.
+// Bootstrap from env var tokens on first use, or re-seed if STRAVA_REFRESH_TOKEN
+// in env differs from what's stored (e.g. user pasted new tokens from Strava's API page).
 async function ensureBootstrapped(): Promise<void> {
+  const envRefreshToken = process.env.STRAVA_REFRESH_TOKEN;
+  if (!envRefreshToken) return;
+
   const existing = await getTokenRecord();
-  if (existing) return;
+  // Skip if stored token matches env — already bootstrapped and rotated normally
+  if (existing && existing.refresh_token === envRefreshToken) return;
 
-  const refreshToken = process.env.STRAVA_REFRESH_TOKEN;
   const accessToken = process.env.STRAVA_ACCESS_TOKEN;
-  if (!refreshToken) return; // nothing to bootstrap from
-
   await docClient.send(
     new PutCommand({
       TableName: TABLE_NAME,
       Item: {
+        ...(existing ?? {}),
         pk: STRAVA_PK,
         sk: TOKEN_SK,
         access_token: accessToken ?? "",
-        refresh_token: refreshToken,
-        expires_at: 0, // force immediate refresh
-        lastSyncEpoch: 0,
+        refresh_token: envRefreshToken,
+        expires_at: 0, // force immediate refresh so we get a rotated token ASAP
       },
     })
   );
@@ -142,6 +143,9 @@ export async function stravaFetch<T = unknown>(
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error("Strava token invalid or missing activity:read_all scope — use Reconnect");
+    }
     throw new Error(`Strava API ${res.status}: ${path}`);
   }
   return res.json() as Promise<T>;

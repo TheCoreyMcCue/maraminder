@@ -255,19 +255,27 @@ export default function StravaSync() {
             </div>
           )}
           {error && (
-            <div style={{ fontSize: 11, color: "#ef4444" }}>{error}</div>
+            <div style={{ fontSize: 11, color: "#ef4444", marginBottom: 2 }}>{error}</div>
           )}
-          {status.unmatchedCount > 0 && (
-            <button
-              onClick={() => setShowUnmatched(true)}
-              style={{
-                fontSize: 11, color: ORANGE, background: "none", border: "none",
-                cursor: "pointer", padding: 0, textDecoration: "underline",
-              }}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {status.unmatchedCount > 0 && (
+              <button
+                onClick={() => setShowUnmatched(true)}
+                style={{
+                  fontSize: 11, color: ORANGE, background: "none", border: "none",
+                  cursor: "pointer", padding: 0, textDecoration: "underline",
+                }}
+              >
+                {status.unmatchedCount} unmatched →
+              </button>
+            )}
+            <a
+              href="/api/strava/connect"
+              style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "underline" }}
             >
-              {status.unmatchedCount} unmatched →
-            </button>
-          )}
+              Reconnect
+            </a>
+          </div>
         </div>
         <button
           onClick={handleSync}
