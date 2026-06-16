@@ -205,7 +205,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
           {allWeeks.map((w) => {
             const active = w.weekNo === week.weekNo;
             return (
-              <Link key={w.weekNo} ref={active ? activeNavRef : undefined} href={w.weekNo === 1 ? "/" : `/week/${w.weekNo}`} style={{ flexShrink: 0 }}>
+              <Link key={w.weekNo} ref={active ? activeNavRef : undefined} href={`/week/${w.weekNo}`} style={{ flexShrink: 0 }}>
                 <div style={{
                   padding: "4px 10px", borderRadius: 6, fontSize: 12,
                   fontWeight: active ? 700 : 400,
