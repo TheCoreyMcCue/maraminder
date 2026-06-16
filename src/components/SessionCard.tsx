@@ -8,6 +8,7 @@ import MoveModal from "./MoveModal";
 import { updateSessionStatus, unlogSession, logRestDay } from "@/lib/planOps";
 import EditSessionModal from "./EditSessionModal";
 import SplitSessionModal from "./SplitSessionModal";
+import SessionDetailSheet from "./SessionDetailSheet";
 import { deleteSessionAction } from "@/lib/planActions";
 import { useRouter } from "next/navigation";
 
@@ -45,6 +46,7 @@ export default function SessionCard({
   const [showSplit, setShowSplit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
   const router = useRouter();
   const color = categoryColors[session.category];
   const isDone = session.status === "done";
@@ -130,9 +132,19 @@ export default function SessionCard({
               ANCHOR
             </span>
           )}
-          {isDone && (
-            <span style={{ marginLeft: "auto", fontSize: 16, color: "#22c55e" }}>✓</span>
-          )}
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+            {isDone && <span style={{ fontSize: 16, color: "#22c55e" }}>✓</span>}
+            <button
+              onClick={() => setShowDetail(true)}
+              title="View details"
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: "2px 4px",
+                color: "var(--text-muted)", fontSize: 15, lineHeight: 1, borderRadius: 4,
+              }}
+            >
+              ⓘ
+            </button>
+          </span>
         </div>
 
         {/* Title */}
@@ -298,6 +310,14 @@ export default function SessionCard({
           planId={planId}
           weekDates={weekDates}
           onClose={() => setShowSplit(false)}
+        />
+      )}
+      {showDetail && (
+        <SessionDetailSheet
+          session={session}
+          zones={zones}
+          ftpW={ftpW}
+          onClose={() => setShowDetail(false)}
         />
       )}
     </>
