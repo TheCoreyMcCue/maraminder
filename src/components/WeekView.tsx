@@ -176,7 +176,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
           <div style={{ display: "flex", gap: 8 }}>
             <StatChip
               label="Run km"
-              value={`${actualKm > 0 ? actualKm.toFixed(1) : plannedKm.toFixed(0)}/${week.volumeTargetKm}`}
+              value={`${actualKm > 0 ? actualKm.toFixed(1) : (today && week.dateStart <= today ? plannedKm.toFixed(0) : "0")}/${week.volumeTargetKm}`}
             />
             {actualBikeKm > 0 && (
               <StatChip label="Bike km" value={`${actualBikeKm.toFixed(0)}`} color="#0ea5e9" />
