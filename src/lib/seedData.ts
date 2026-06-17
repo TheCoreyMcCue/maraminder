@@ -5,13 +5,13 @@ export const PLAN_PK = "PLAN#amsterdam26";
 export const planMeta: PlanMeta = {
   pk: PLAN_PK,
   sk: "META",
-  name: "Amsterdam Marathon Block — Sub-3 Build",
+  name: "Amsterdam Marathon Block — Sub-2:55 Build",
   raceDate: "2026-10-18",
   halfDate: "2026-09-27",
   startDate: "2026-07-20",
-  goalTime: "2:59",
-  goalPace: "4:16",
-  currentZoneVersion: 1,
+  goalTime: "2:54",
+  goalPace: "4:08",
+  currentZoneVersion: 2,
 };
 
 export const zonesV1: ZoneSet = {
@@ -29,12 +29,27 @@ export const zonesV1: ZoneSet = {
   },
 };
 
+export const zonesV2: ZoneSet = {
+  pk: PLAN_PK,
+  sk: "ZONES#2",
+  version: 2,
+  effectiveWeek: 1,
+  source: "Goal update — 2:54 target (Jun-6 brick: 4:07/km @ 177 HR off the bike)",
+  zones: {
+    E:  { label: "Easy",      paceLow: "5:00", paceHigh: "5:20", hrMax: 174 },
+    S:  { label: "Steady",    paceLow: "4:25", paceHigh: "4:40", hrLow: 174, hrHigh: 180 },
+    MP: { label: "Marathon",  pace: "4:08",                       hrLow: 170, hrHigh: 178 },
+    T:  { label: "Threshold", paceLow: "3:52", paceHigh: "4:02", hrLow: 180, hrHigh: 187 },
+    I:  { label: "Interval",  paceLow: "3:25", paceHigh: "3:40", hrMin: 188 },
+  },
+};
+
 export const weeks: Week[] = [
   { pk: PLAN_PK, sk: "WEEK#01", weekNo: 1, phase: "Base / Reload", dateStart: "2026-07-20", dateEnd: "2026-07-26", volumeTargetKm: 70, volumeTargetHours: 6, isDownWeek: false, notes: "Settle in; all easy days ≤174 HR. Strides Wed+Sat, hill sprints Sat." },
   { pk: PLAN_PK, sk: "WEEK#02", weekNo: 2, phase: "Base / Reload", dateStart: "2026-07-27", dateEnd: "2026-08-02", volumeTargetKm: 74, isDownWeek: false, notes: "Strides + 1 hill-sprint set." },
   { pk: PLAN_PK, sk: "WEEK#03", weekNo: 3, phase: "Base / Reload", dateStart: "2026-08-03", dateEnd: "2026-08-09", volumeTargetKm: 76, isDownWeek: false, notes: "Consolidate base." },
   { pk: PLAN_PK, sk: "WEEK#04", weekNo: 4, phase: "Marathon-specific", dateStart: "2026-08-10", dateEnd: "2026-08-16", volumeTargetKm: 80, isDownWeek: false, notes: "MP moves into long runs. Begin race-fuel practice on every long run from this week." },
-  { pk: PLAN_PK, sk: "WEEK#05", weekNo: 5, phase: "Marathon-specific", dateStart: "2026-08-17", dateEnd: "2026-08-23", volumeTargetKm: 85, isDownWeek: false, notes: "★ CHECKPOINT: log HR across the MP blocks. Low-to-mid 170s = on track for sub-3. Pushing 180 = adjust target." },
+  { pk: PLAN_PK, sk: "WEEK#05", weekNo: 5, phase: "Marathon-specific", dateStart: "2026-08-17", dateEnd: "2026-08-23", volumeTargetKm: 85, isDownWeek: false, notes: "★ CHECKPOINT: log HR across the MP blocks at 4:08. Low-to-mid 170s = on track for 2:54. Drifting to high-170s/180 = ease the target toward 2:56–2:57." },
   { pk: PLAN_PK, sk: "WEEK#06", weekNo: 6, phase: "Down Week", dateStart: "2026-08-24", dateEnd: "2026-08-30", volumeTargetKm: 72, isDownWeek: true, notes: "Recovery / absorb. Pull earlier if cooked sooner." },
   { pk: PLAN_PK, sk: "WEEK#07", weekNo: 7, phase: "Marathon-specific", dateStart: "2026-08-31", dateEnd: "2026-09-06", volumeTargetKm: 88, isDownWeek: false, notes: "Peak long-run block begins. Volume peaks — absorb cleanly." },
   { pk: PLAN_PK, sk: "WEEK#08", weekNo: 8, phase: "Marathon-specific", dateStart: "2026-09-07", dateEnd: "2026-09-13", volumeTargetKm: 92, isDownWeek: false, notes: "Biggest week. KEY SESSION: MP on tired legs (Sun long). Full race-fuel rehearsal." },
@@ -48,7 +63,7 @@ export const weeks: Week[] = [
 // Sessions: Sun = long run, Tue = Q1, Thu = Q2, Mon/Wed/Fri = easy, Sat = easy/rest
 export const sessions: Session[] = [
   // === WEEK 1 ===
-  { pk: PLAN_PK, sk: "WEEK#01#SES#q1", weekNo: 1, date: "2026-07-21", dayOfWeek: "Tue", type: "anchor", category: "threshold", title: "Threshold intervals", structure: "3×8min @ T (4:05), 2min jog", zoneRefs: ["E", "T"], targetDurationMin: 60, targetDistanceKm: 12, order: 2, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#01#SES#q1", weekNo: 1, date: "2026-07-21", dayOfWeek: "Tue", type: "anchor", category: "threshold", title: "Threshold intervals", structure: "3×8min @ T (~3:58), 2min jog", zoneRefs: ["E", "T"], targetDurationMin: 60, targetDistanceKm: 12, order: 2, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#01#SES#long", weekNo: 1, date: "2026-07-26", dayOfWeek: "Sun", type: "anchor", category: "long", title: "Long run — easy", structure: "1:45 easy (~20km)", zoneRefs: ["E"], targetDurationMin: 105, targetDistanceKm: 20, order: 7, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#01#SES#easy1", weekNo: 1, date: "2026-07-20", dayOfWeek: "Mon", type: "fill", category: "easy", title: "Easy run", structure: "Easy aerobic, <170 HR", zoneRefs: ["E"], targetDurationMin: 45, targetDistanceKm: 9, order: 1, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#01#SES#easy2", weekNo: 1, date: "2026-07-22", dayOfWeek: "Wed", type: "fill", category: "easy", title: "Easy + strides", structure: "Easy run + 6×20s strides", zoneRefs: ["E"], targetDurationMin: 50, targetDistanceKm: 10, order: 3, status: "planned", actual: null },
@@ -75,7 +90,7 @@ export const sessions: Session[] = [
   { pk: PLAN_PK, sk: "WEEK#03#SES#easy4", weekNo: 3, date: "2026-08-08", dayOfWeek: "Sat", type: "fill", category: "easy", title: "Easy run", structure: "Easy aerobic", zoneRefs: ["E"], targetDurationMin: 50, targetDistanceKm: 10, order: 6, status: "planned", actual: null },
 
   // === WEEK 4 ===
-  { pk: PLAN_PK, sk: "WEEK#04#SES#q1", weekNo: 4, date: "2026-08-11", dayOfWeek: "Tue", type: "anchor", category: "threshold", title: "Threshold 1km reps", structure: "5×1km @ T (4:00–4:05), 90s jog", zoneRefs: ["E", "T"], targetDurationMin: 55, targetDistanceKm: 11, order: 2, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#04#SES#q1", weekNo: 4, date: "2026-08-11", dayOfWeek: "Tue", type: "anchor", category: "threshold", title: "Threshold 1km reps", structure: "5×1km @ T (~3:55–4:00), 90s jog", zoneRefs: ["E", "T"], targetDurationMin: 55, targetDistanceKm: 11, order: 2, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#04#SES#q2", weekNo: 4, date: "2026-08-13", dayOfWeek: "Thu", type: "anchor", category: "mp", title: "MP intervals — midweek", structure: "14km w/ 3×10min @ MP", zoneRefs: ["E", "MP"], targetDurationMin: 75, targetDistanceKm: 14, order: 4, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#04#SES#long", weekNo: 4, date: "2026-08-16", dayOfWeek: "Sun", type: "anchor", category: "long", title: "Long run w/ MP blocks", structure: "2:15 w/ 3×10min @ MP (~26km). Begin race-fuel practice.", zoneRefs: ["E", "MP"], targetDurationMin: 135, targetDistanceKm: 26, order: 7, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#04#SES#easy1", weekNo: 4, date: "2026-08-10", dayOfWeek: "Mon", type: "fill", category: "easy", title: "Easy run", structure: "Easy aerobic, <170 HR", zoneRefs: ["E"], targetDurationMin: 45, targetDistanceKm: 9, order: 1, status: "planned", actual: null },
@@ -147,7 +162,7 @@ export const sessions: Session[] = [
   { pk: PLAN_PK, sk: "WEEK#11#SES#easy4", weekNo: 11, date: "2026-10-03", dayOfWeek: "Sat", type: "fill", category: "easy", title: "Easy run", structure: "Easy aerobic", zoneRefs: ["E"], targetDurationMin: 40, targetDistanceKm: 8, order: 6, status: "planned", actual: null },
 
   // === WEEK 12 (TAPER) ===
-  { pk: PLAN_PK, sk: "WEEK#12#SES#q1", weekNo: 12, date: "2026-10-06", dayOfWeek: "Tue", type: "anchor", category: "mp", title: "MP→T sharpener", structure: "4×1km @ MP→T (4:16→3:55)", zoneRefs: ["E", "MP", "T"], targetDurationMin: 45, targetDistanceKm: 9, order: 2, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#12#SES#q1", weekNo: 12, date: "2026-10-06", dayOfWeek: "Tue", type: "anchor", category: "mp", title: "MP→T sharpener", structure: "4×1km @ MP→T (4:08→3:52)", zoneRefs: ["E", "MP", "T"], targetDurationMin: 45, targetDistanceKm: 9, order: 2, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#12#SES#long", weekNo: 12, date: "2026-10-11", dayOfWeek: "Sun", type: "anchor", category: "long", title: "Medium-long w/ MP taste", structure: "80–90min easy w/ a few min @ MP", zoneRefs: ["E", "MP"], targetDurationMin: 85, targetDistanceKm: 17, order: 7, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#12#SES#easy1", weekNo: 12, date: "2026-10-05", dayOfWeek: "Mon", type: "fill", category: "easy", title: "Easy run", structure: "Easy aerobic, 35–45min", zoneRefs: ["E"], targetDurationMin: 40, targetDistanceKm: 8, order: 1, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#12#SES#easy2", weekNo: 12, date: "2026-10-07", dayOfWeek: "Wed", type: "fill", category: "easy", title: "Easy run + strides", structure: "Easy 35–45min + 4×20s strides", zoneRefs: ["E"], targetDurationMin: 40, targetDistanceKm: 8, order: 3, status: "planned", actual: null },
@@ -157,7 +172,7 @@ export const sessions: Session[] = [
 
   // === WEEK 13 (RACE WEEK) ===
   { pk: PLAN_PK, sk: "WEEK#13#SES#q1", weekNo: 13, date: "2026-10-13", dayOfWeek: "Tue", type: "anchor", category: "mp", title: "Race-week sharpener", structure: "5km E + 4×1min @ MP + strides. Keep it short and sharp.", zoneRefs: ["E", "MP"], targetDurationMin: 40, targetDistanceKm: 8, order: 2, status: "planned", actual: null },
-  { pk: PLAN_PK, sk: "WEEK#13#SES#race", weekNo: 13, date: "2026-10-18", dayOfWeek: "Sun", type: "anchor", category: "race", title: "★ AMSTERDAM MARATHON", structure: "Race day. Controlled negative-split plan. Goal: sub-3 (4:16/km).", zoneRefs: ["MP"], targetDurationMin: 179, targetDistanceKm: 42.2, order: 7, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#13#SES#race", weekNo: 13, date: "2026-10-18", dayOfWeek: "Sun", type: "anchor", category: "race", title: "★ AMSTERDAM MARATHON", structure: "Race day. Controlled negative-split plan. Goal: 2:54 (4:08/km).", zoneRefs: ["MP"], targetDurationMin: 179, targetDistanceKm: 42.2, order: 7, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#13#SES#easy1", weekNo: 13, date: "2026-10-12", dayOfWeek: "Mon", type: "fill", category: "rest", title: "Rest", structure: "Full rest", zoneRefs: [], order: 1, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#13#SES#easy2", weekNo: 13, date: "2026-10-14", dayOfWeek: "Wed", type: "fill", category: "easy", title: "Easy shakeout", structure: "20–25min easy, feel good", zoneRefs: ["E"], targetDurationMin: 25, targetDistanceKm: 5, order: 3, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#13#SES#rest1", weekNo: 13, date: "2026-10-15", dayOfWeek: "Thu", type: "fill", category: "rest", title: "Rest", structure: "Rest", zoneRefs: [], order: 4, status: "planned", actual: null },
