@@ -13,12 +13,8 @@ export async function GET(req: NextRequest) {
   const pretty = req.nextUrl.searchParams.get("pretty") === "1";
   const planParam = req.nextUrl.searchParams.get("plan");
 
-  // Default: export all plans. Pass ?plan=amsterdam26 to export one.
-  const planIds = planParam && planParam !== "all"
-    ? [planParam]
-    : ALL_PLAN_IDS;
+  const planIds = planParam && planParam !== "all" ? [planParam] : ALL_PLAN_IDS;
 
-  // ── Query all plan partitions + personal baseline in parallel ──
   const [planResults, baselineResult] = await Promise.all([
     Promise.all(
       planIds.map((id) =>
@@ -35,9 +31,7 @@ export async function GET(req: NextRequest) {
     })),
   ]);
 
-  // ── Build per-plan export objects ─────────────────────────
   const exportedPlans: Record<string, unknown> = {};
-
   const baseline = baselineResult.Item as Record<string, unknown> | undefined;
 
   for (const { planId, items } of planResults) {
@@ -49,15 +43,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No plan data found" }, { status: 404 });
   }
 
-  // ── Strip DynamoDB internal fields from baseline ──────────
-  const baselineClean = baselineResult.Item
-    ? (({ pk, sk, ...rest }) => rest)(baselineResult.Item as Record<string, unknown>)
-    : null;
+  const baselineClean = baseline ? strip(baseline) : null;
 
   const payload = {
     exportedAt: new Date().toISOString(),
     personalBaseline: baselineClean,
-    // Single plan → flat shape (backward compat). Multiple → keyed by planId.
     ...(planIds.length === 1
       ? exportedPlans[planIds[0]] as object
       : { plans: exportedPlans }),
@@ -70,16 +60,32 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Root serialization helper ────────────────────────────────────────────────
+// Strip DynamoDB pk/sk housekeeping keys only — every other field passes through
+// untouched. This is intentional: new fields flow to the export automatically
+// without requiring any changes here.
+
+function strip(item: Record<string, unknown>): Record<string, unknown> {
+  const { pk: _pk, sk: _sk, ...rest } = item;
+  return rest;
+}
+
+// ── Load estimation (used for weekly derived stats) ──────────────────────────
 
 const EST_RPE: Record<string, number> = {
   easy: 3.5, steady: 5, mp: 6, threshold: 7, vo2: 8.5,
-  long: 4.5, race: 8.5, bike: 3.5, brick: 7, rest: 0,
+  long: 4.5, race: 8.5, bike: 3.5, brick: 7, strength: 5, rest: 0,
 };
 
 function sessionLoad(s: Record<string, unknown>, ftpW?: number): number {
   const a = s.actual as Record<string, unknown> | null;
   const cat = s.category as string;
+  if (cat === "strength") {
+    const base  = (s.loadContribution as number | undefined) ?? 110;
+    const rpe   = a?.rpe as number | undefined;
+    const scale = rpe != null ? Math.min(1.3, Math.max(0.5, rpe / 7)) : 1;
+    return base * scale;
+  }
   if ((cat === "bike" || cat === "brick") && a?.avgPowerW && ftpW) {
     const hrs = ((a.durationMin ?? s.targetDurationMin ?? 0) as number) / 60;
     return hrs * Math.pow((a.avgPowerW as number) / ftpW, 2) * 100 * 6;
@@ -89,6 +95,8 @@ function sessionLoad(s: Record<string, unknown>, ftpW?: number): number {
   return dur * rpe;
 }
 
+// ── Daily readiness (computed, not stored) ───────────────────────────────────
+
 interface BaselineShape {
   hrv?: { mean?: number };
   rhr?: { mean?: number };
@@ -96,37 +104,34 @@ interface BaselineShape {
   ftpW?: number;
 }
 
-// Compute a 0–100 daily readiness score from one recovery reading vs baseline.
-// Formula mirrors weeklyAnalysis recoveryIndex (HRV 60%, RHR 25%, sleep 15%)
-// but maps the [-30, +30] deviation range to [0, 100]: score = 50 + dev*(50/30).
 function computeDailyReadiness(r: Record<string, unknown>, bl: BaselineShape): number | null {
   const clamp = (v: number) => Math.max(-30, Math.min(30, v));
   let weightedSum = 0, totalWeight = 0;
 
-  const hrvMean = bl.hrv?.mean;
-  if (r.hrvMs != null && hrvMean) {
-    const dev = clamp(((r.hrvMs as number) - hrvMean) / hrvMean * 100);
+  if (r.hrvMs != null && bl.hrv?.mean) {
+    const dev = clamp(((r.hrvMs as number) - bl.hrv.mean) / bl.hrv.mean * 100);
     weightedSum += dev * 0.60; totalWeight += 0.60;
   }
-  const rhrMean = bl.rhr?.mean;
-  if (r.rhrBpm != null && rhrMean) {
-    const dev = clamp(-((r.rhrBpm as number) - rhrMean) / rhrMean * 100);
+  if (r.rhrBpm != null && bl.rhr?.mean) {
+    const dev = clamp(-((r.rhrBpm as number) - bl.rhr.mean) / bl.rhr.mean * 100);
     weightedSum += dev * 0.25; totalWeight += 0.25;
   }
-  const sleepTarget = bl.sleepTargetHours;
-  if (r.sleepHours != null && sleepTarget) {
-    const dev = clamp(((r.sleepHours as number) - sleepTarget) / sleepTarget * 100);
+  if (r.sleepHours != null && bl.sleepTargetHours) {
+    const dev = clamp(((r.sleepHours as number) - bl.sleepTargetHours) / bl.sleepTargetHours * 100);
     weightedSum += dev * 0.15; totalWeight += 0.15;
   }
 
   if (totalWeight === 0) return null;
-  const deviation = (weightedSum / totalWeight);
-  return Math.round(Math.max(0, Math.min(100, 50 + deviation * (50 / 30))));
+  return Math.round(Math.max(0, Math.min(100, 50 + (weightedSum / totalWeight) * (50 / 30))));
 }
 
-// ── Per-plan processor ────────────────────────────────────────────────────────
+// ── Per-plan export ──────────────────────────────────────────────────────────
 
-function buildPlanExport(planId: string, items: Record<string, unknown>[], baseline?: Record<string, unknown>) {
+function buildPlanExport(
+  planId: string,
+  items: Record<string, unknown>[],
+  baseline?: Record<string, unknown>
+) {
   let meta: Record<string, unknown> | null = null;
   const zones: Record<string, unknown>[] = [];
   const weekItems: Record<string, unknown>[] = [];
@@ -135,10 +140,10 @@ function buildPlanExport(planId: string, items: Record<string, unknown>[], basel
 
   for (const item of items) {
     const sk = item.sk as string;
-    if (sk === "META")                   meta = item;
-    else if (sk.startsWith("ZONES#"))   zones.push(item);
-    else if (/^WEEK#\d+#SES#/.test(sk)) sessionItems.push(item);
-    else if (/^WEEK#\d+$/.test(sk))     weekItems.push(item);
+    if (sk === "META")                    meta = item;
+    else if (sk.startsWith("ZONES#"))    zones.push(item);
+    else if (/^WEEK#\d+#SES#/.test(sk))  sessionItems.push(item);
+    else if (/^WEEK#\d+$/.test(sk))      weekItems.push(item);
     else if (sk.startsWith("RECOVERY#")) recoveryItems.push(item);
   }
 
@@ -152,7 +157,17 @@ function buildPlanExport(planId: string, items: Record<string, unknown>[], basel
   const bl = (baseline ?? {}) as BaselineShape;
   const ftpW = bl.ftpW;
 
-  // Per-week derived stats
+  // Build date → weekNo lookup for recovery grouping
+  const dateToWeek = new Map<string, number>();
+  for (const w of weekItems) {
+    const cur  = new Date((w.dateStart as string) + "T12:00:00");
+    const last = new Date((w.dateEnd   as string) + "T12:00:00");
+    while (cur <= last) {
+      dateToWeek.set(cur.toISOString().slice(0, 10), w.weekNo as number);
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
   const sessionsByWeek = new Map<number, typeof sessionItems>();
   for (const s of sessionItems) {
     const wn = s.weekNo as number;
@@ -160,21 +175,6 @@ function buildPlanExport(planId: string, items: Record<string, unknown>[], basel
     sessionsByWeek.get(wn)!.push(s);
   }
 
-  const recoveryByWeek = new Map<string, typeof recoveryItems[]>();
-  // map date → week for quick lookup
-  const dateToWeek = new Map<string, number>();
-  for (const w of weekItems) {
-    const start = w.dateStart as string;
-    const end   = w.dateEnd as string;
-    const wn    = w.weekNo as number;
-    // Iterate dates in range
-    const cur = new Date(start + "T12:00:00");
-    const last = new Date(end + "T12:00:00");
-    while (cur <= last) {
-      dateToWeek.set(cur.toISOString().slice(0, 10), wn);
-      cur.setDate(cur.getDate() + 1);
-    }
-  }
   const recoveryByWeekNo = new Map<number, typeof recoveryItems>();
   for (const r of recoveryItems) {
     const wn = dateToWeek.get(r.date as string);
@@ -185,146 +185,88 @@ function buildPlanExport(planId: string, items: Record<string, unknown>[], basel
 
   return {
     planId,
-    plan: {
-      name: meta.name ?? null,
-      raceDate: meta.raceDate ?? null,
-      halfDate: meta.halfDate ?? null,
-      startDate: meta.startDate ?? null,
-      goalTime: meta.goalTime ?? null,
-      goalPace: meta.goalPace ?? null,
-      currentZoneVersion: meta.currentZoneVersion ?? null,
-    },
 
-    zones: zones.map((z) => ({
-      version: z.version ?? null,
-      effectiveWeek: z.effectiveWeek ?? null,
-      source: z.source ?? null,
-      zones: z.zones ?? null,
-    })),
+    // Full plan meta — new fields flow automatically
+    plan: strip(meta),
+
+    // Full zone sets — new fields flow automatically
+    zones: zones.map(strip),
 
     weeks: weekItems.map((w) => {
-      const wn = w.weekNo as number;
-      const wSessions = sessionsByWeek.get(wn) ?? [];
-      const wReadings = recoveryByWeekNo.get(wn) ?? [];
+      const wn       = w.weekNo as number;
+      const wSess    = sessionsByWeek.get(wn) ?? [];
+      const wRecov   = recoveryByWeekNo.get(wn) ?? [];
 
-      // Run km only (bike excluded from volume target)
-      const actualKm = wSessions
+      const actualKm = wSess
         .filter((s) => s.category !== "bike" && (s.actual as Record<string, unknown> | null)?.distanceKm != null)
         .reduce((sum, s) => sum + ((s.actual as Record<string, unknown>).distanceKm as number), 0);
-      const actualBikeKm = wSessions
+      const actualBikeKm = wSess
         .filter((s) => s.category === "bike" && (s.actual as Record<string, unknown> | null)?.distanceKm != null)
         .reduce((sum, s) => sum + ((s.actual as Record<string, unknown>).distanceKm as number), 0);
-      const done    = wSessions.filter((s) => s.status === "done").length;
-      const skipped = wSessions.filter((s) => s.status === "skipped").length;
+      const done    = wSess.filter((s) => s.status === "done").length;
+      const skipped = wSess.filter((s) => s.status === "skipped").length;
 
-      // Load
       let actualLoad = 0, plannedLoad = 0;
-      for (const s of wSessions) {
+      for (const s of wSess) {
         if (s.status === "skipped") continue;
-        plannedLoad += (s.targetDurationMin as number ?? 0) * (EST_RPE[s.category as string] ?? 5);
+        if ((s.category as string) === "strength") {
+          plannedLoad += (s.loadContribution as number | undefined) ?? 110;
+        } else {
+          plannedLoad += ((s.targetDurationMin as number) ?? 0) * (EST_RPE[s.category as string] ?? 5);
+        }
         if (s.status === "done" && s.actual) actualLoad += sessionLoad(s, ftpW);
       }
-      const lifeScores = wReadings.filter((r) => r.lifeStress != null).map((r) => r.lifeStress as number);
+
+      const lifeScores = wRecov.filter((r) => r.lifeStress != null).map((r) => r.lifeStress as number);
       const avgLife = lifeScores.length ? lifeScores.reduce((a, b) => a + b, 0) / lifeScores.length : null;
       const lifeStressLoad = avgLife != null ? Math.round(avgLife * 30 * 7) : 0;
       const totalLoad = Math.round(actualLoad + lifeStressLoad);
 
-      // Recovery index (HRV 60% / RHR 25% / sleep 15%, deviation from baseline, -30→+30)
-      const daysWithData = wReadings.filter((r) => r.hrvMs != null || r.rhrBpm != null);
+      // Recovery index
+      const daysWithData = wRecov.filter((r) => r.hrvMs != null || r.rhrBpm != null);
       let recoveryIndex: number | null = null;
       if (daysWithData.length > 0 && (bl.hrv?.mean || bl.rhr?.mean)) {
         const clamp = (v: number) => Math.max(-30, Math.min(30, v));
-        const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-        const hrvDevs = wReadings.filter(r => r.hrvMs != null && bl.hrv?.mean)
+        const avg   = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+        const hrvDevs  = wRecov.filter(r => r.hrvMs != null && bl.hrv?.mean)
           .map(r => clamp(((r.hrvMs as number) - bl.hrv!.mean!) / bl.hrv!.mean! * 100));
-        const rhrDevs = wReadings.filter(r => r.rhrBpm != null && bl.rhr?.mean)
+        const rhrDevs  = wRecov.filter(r => r.rhrBpm != null && bl.rhr?.mean)
           .map(r => clamp(-((r.rhrBpm as number) - bl.rhr!.mean!) / bl.rhr!.mean! * 100));
-        const sleepDevs = wReadings.filter(r => r.sleepHours != null && bl.sleepTargetHours)
+        const sleepDevs = wRecov.filter(r => r.sleepHours != null && bl.sleepTargetHours)
           .map(r => clamp(((r.sleepHours as number) - bl.sleepTargetHours!) / bl.sleepTargetHours! * 100));
         const h = avg(hrvDevs), r2 = avg(rhrDevs), s2 = avg(sleepDevs);
         let ws = 0, tw = 0;
-        if (h != null)  { ws += h  * 0.60; tw += 0.60; }
+        if (h  != null) { ws += h  * 0.60; tw += 0.60; }
         if (r2 != null) { ws += r2 * 0.25; tw += 0.25; }
         if (s2 != null) { ws += s2 * 0.15; tw += 0.15; }
         if (tw > 0) recoveryIndex = Math.round((ws / tw) * 10) / 10;
       }
 
+      // Full week object — new week fields flow automatically
       return {
-        weekNo:              w.weekNo ?? null,
-        phase:               w.phase ?? null,
-        dateStart:           w.dateStart ?? null,
-        dateEnd:             w.dateEnd ?? null,
-        isDownWeek:          w.isDownWeek ?? false,
-        volumeTargetKm:      w.volumeTargetKm ?? null,
-        volumeActualRunKm:   actualKm > 0 ? parseFloat(actualKm.toFixed(2)) : null,
-        volumeActualBikeKm:  actualBikeKm > 0 ? parseFloat(actualBikeKm.toFixed(2)) : null,
-        sessionsPlanned:     wSessions.length,
-        sessionsDone:        done,
-        sessionsSkipped:     skipped,
-        plannedLoad:         Math.round(plannedLoad),
-        actualLoad:          Math.round(actualLoad),
+        ...strip(w),
+        // Computed analytics (derived from sessions + recovery, not stored in DB)
+        volumeActualRunKm:  actualKm     > 0 ? parseFloat(actualKm.toFixed(2))     : null,
+        volumeActualBikeKm: actualBikeKm > 0 ? parseFloat(actualBikeKm.toFixed(2)) : null,
+        sessionsPlanned:  wSess.length,
+        sessionsDone:     done,
+        sessionsSkipped:  skipped,
+        plannedLoad:      Math.round(plannedLoad),
+        actualLoad:       Math.round(actualLoad),
         lifeStressLoad,
         totalLoad,
         recoveryIndex,
-        notes:               w.notes ?? null,
       };
     }),
 
-    sessions: sessionItems.map((s) => {
-      const actual = s.actual as Record<string, unknown> | null;
-      const decoupling = actual?.decoupling as Record<string, unknown> | undefined;
+    // Full session objects — targetDetail, purpose, laps, workSummary, decoupling,
+    // strength category, and any future fields all flow through automatically.
+    sessions: sessionItems.map(strip),
 
-      return {
-        weekNo:    s.weekNo ?? null,
-        date:      s.date ?? null,
-        dayOfWeek: s.dayOfWeek ?? null,
-        type:      s.type ?? null,
-        category:  s.category ?? null,
-        title:     s.title ?? null,
-        status:    s.status ?? null,
-        target: {
-          durationMin:  s.targetDurationMin ?? null,
-          distanceKm:   s.targetDistanceKm ?? null,
-          zoneRefs:     s.zoneRefs ?? [],
-          structure:    s.structure ?? null,
-        },
-        actual: actual ? {
-          distanceKm:   actual.distanceKm ?? null,
-          durationMin:  actual.durationMin ?? null,
-          avgPacePerKm: actual.avgPacePerKm ?? null,
-          avgHr:        actual.avgHr ?? null,
-          avgPowerW:    actual.avgPowerW ?? null,
-          segmentHr:    actual.segmentHr ?? null,
-          segmentPace:  actual.segmentPace ?? null,
-          rpe:          actual.rpe ?? null,
-          tempC:        actual.tempC ?? null,
-          wind:         actual.wind ?? null,
-          restTaken:    actual.restTaken ?? null,
-          notes:        actual.notes ?? null,
-          stravaUrl:    actual.stravaUrl ?? null,
-          stravaActivityId: actual.stravaActivityId ?? null,
-          targetSnapshot: actual.targetSnapshot ?? null,
-          decoupling: decoupling ? {
-            firstHalfHr:  decoupling.firstHalfHr ?? null,
-            secondHalfHr: decoupling.secondHalfHr ?? null,
-            paceHeldKm:   decoupling.paceHeldKm ?? null,
-          } : null,
-        } : null,
-      };
-    }),
-
-    // All recovery readings — readiness is computed (HRV/RHR/sleep vs baseline)
+    // Full recovery readings + computed readiness
     recovery: recoveryItems.map((r) => ({
-      date:         r.date ?? null,
-      hrvMs:        r.hrvMs ?? null,
-      rhrBpm:       r.rhrBpm ?? null,
-      sleepHours:   r.sleepHours ?? null,
-      sleepScore:   r.sleepScore ?? null,
-      readiness:    computeDailyReadiness(r, bl),
-      lifeStress:   r.lifeStress ?? null,
-      legFatigue:   r.legFatigue ?? null,
-      source:       r.source ?? null,
-      note:         r.note ?? null,
+      ...strip(r),
+      readiness: computeDailyReadiness(r, bl),
     })),
   };
 }

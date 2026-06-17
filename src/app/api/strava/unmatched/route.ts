@@ -53,6 +53,23 @@ export async function POST(req: NextRequest) {
     }
     const item = result.Item as StravaUnmatched;
 
+    // If laps were pre-classified (lap-count mismatch that user is now confirming),
+    // include them; also derive segmentPace/Hr from those laps.
+    let lapFields: Record<string, unknown> = {};
+    if (item.pendingLaps?.length) {
+      const { deriveSegments, buildWorkSummary } = await import("@/lib/lapUtils");
+      const { segmentPace, segmentHr } = deriveSegments(item.pendingLaps);
+      // Find the work zone from the first rep lap
+      const workZone = item.pendingLaps.find((l) => l.label === "rep")?.zone;
+      const workSummary = workZone ? buildWorkSummary(item.pendingLaps, workZone) : null;
+      lapFields = {
+        laps: item.pendingLaps,
+        workSummary: workSummary ?? undefined,
+        segmentPace: Object.keys(segmentPace).length > 0 ? segmentPace : undefined,
+        segmentHr:   Object.keys(segmentHr).length   > 0 ? segmentHr   : undefined,
+      };
+    }
+
     const actual = {
       distanceKm: item.distanceKm,
       durationMin: item.durationMin,
@@ -60,6 +77,7 @@ export async function POST(req: NextRequest) {
       avgHr: item.avgHr ?? undefined,
       stravaUrl: item.stravaUrl,
       stravaActivityId: item.activityId,
+      ...lapFields,
     };
 
     await logActual(planPk(planId), sessionSk, actual);

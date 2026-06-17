@@ -127,8 +127,8 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
     }
   }
 
-  // Stats — volume counts running km only (bike is supplemental, not toward run target)
-  const isRunSession = (cat: string) => cat !== "bike";
+  // Stats — volume counts running km only (bike/strength are supplemental)
+  const isRunSession = (cat: string) => cat !== "bike" && cat !== "strength";
   const actualKm = optimisticSessions
     .filter((s) => isRunSession(s.category) && s.actual?.distanceKm)
     .reduce((sum, s) => sum + (s.actual!.distanceKm || 0), 0);
@@ -139,7 +139,7 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
     .filter((s) => s.category === "bike" && s.actual?.distanceKm)
     .reduce((sum, s) => sum + (s.actual!.distanceKm || 0), 0);
   const totalMinutes = optimisticSessions
-    .filter((s) => s.actual?.durationMin && !s.actual.restTaken)
+    .filter((s) => s.actual?.durationMin && !s.actual.restTaken && s.category !== "strength")
     .reduce((sum, s) => sum + (s.actual!.durationMin || 0), 0);
   const doneCount = optimisticSessions.filter((s) => s.status === "done").length;
   const totalCount = optimisticSessions.filter((s) => s.status !== "skipped").length;
@@ -267,7 +267,11 @@ export default function WeekView({ week, sessions, zones, allWeeks, meta, recove
           {weekDates.map(({ date, dow, sessions: daySessions }) => {
             const dateObj = new Date(date + "T12:00:00");
             const isToday = today !== "" && date === today;
-            const sorted = [...daySessions].sort((a, b) => a.order - b.order);
+            const sorted = [...daySessions].sort((a, b) =>
+              a.order !== b.order
+                ? a.order - b.order
+                : (a.intraDayOrder ?? 0) - (b.intraDayOrder ?? 0)
+            );
 
             return (
               <DroppableDay key={date} id={date}>

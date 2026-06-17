@@ -1,4 +1,5 @@
 import type { PlanMeta, ZoneSet, Week, Session } from "./types";
+import { generateTargetDetail } from "./sessionDetailGen";
 
 export const PLAN_PK = "PLAN#amsterdam26";
 
@@ -178,4 +179,48 @@ export const sessions: Session[] = [
   { pk: PLAN_PK, sk: "WEEK#13#SES#rest1", weekNo: 13, date: "2026-10-15", dayOfWeek: "Thu", type: "fill", category: "rest", title: "Rest", structure: "Rest", zoneRefs: [], order: 4, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#13#SES#easy3", weekNo: 13, date: "2026-10-16", dayOfWeek: "Fri", type: "fill", category: "easy", title: "Easy shakeout", structure: "15–20min easy + 4×20s strides", zoneRefs: ["E"], targetDurationMin: 20, targetDistanceKm: 4, order: 5, status: "planned", actual: null },
   { pk: PLAN_PK, sk: "WEEK#13#SES#rest2", weekNo: 13, date: "2026-10-17", dayOfWeek: "Sat", type: "fill", category: "rest", title: "Rest — race eve", structure: "Rest. Check kit, plan logistics.", zoneRefs: [], order: 6, status: "planned", actual: null },
-];
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STRENGTH SESSIONS (W1–W11; Tue W1–11, Thu W1–5; no W12–13, no Saturdays)
+  // intraDayOrder=1 places strength below the same-day run in the day column.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // W1 — Foundation (Tue + Thu)
+  { pk: PLAN_PK, sk: "WEEK#01#SES#str-tue", sessionId: "amsterdam26-2026-07-21-strength", weekNo: 1, date: "2026-07-21", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Foundation", structure: "Foundation phase: back squat 3×8, RDL 3×8, reverse lunge 3×8/leg, calves 3×10–12. ~40min. Run first.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 110, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#01#SES#str-thu", sessionId: "amsterdam26-2026-07-23-strength", weekNo: 1, date: "2026-07-23", dayOfWeek: "Thu", type: "fill", category: "strength", title: "Strength — Foundation", structure: "Foundation phase: back squat 3×8, RDL 3×8, reverse lunge 3×8/leg, calves 3×10–12. ~40min. Run first.", zoneRefs: [], order: 4, intraDayOrder: 1, loadContribution: 110, status: "planned", actual: null },
+
+  // W2 — Foundation (Tue + Thu)
+  { pk: PLAN_PK, sk: "WEEK#02#SES#str-tue", sessionId: "amsterdam26-2026-07-28-strength", weekNo: 2, date: "2026-07-28", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Foundation", structure: "Foundation phase: back squat 3×8, RDL 3×8, reverse lunge 3×8/leg, calves 3×10–12. ~40min. Run first.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 110, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#02#SES#str-thu", sessionId: "amsterdam26-2026-07-30-strength", weekNo: 2, date: "2026-07-30", dayOfWeek: "Thu", type: "fill", category: "strength", title: "Strength — Foundation", structure: "Foundation phase: back squat 3×8, RDL 3×8, reverse lunge 3×8/leg, calves 3×10–12. ~40min. Run first.", zoneRefs: [], order: 4, intraDayOrder: 1, loadContribution: 110, status: "planned", actual: null },
+
+  // W3 — Max-strength, no plyo (Tue + Thu)
+  { pk: PLAN_PK, sk: "WEEK#03#SES#str-tue", sessionId: "amsterdam26-2026-08-04-strength", weekNo: 3, date: "2026-08-04", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — max-strength", structure: "Max-strength: back squat 4×5, RDL 4×5, BSS 3×6/leg, heavy calves. ~45min. Run first, lift after.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 150, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#03#SES#str-thu", sessionId: "amsterdam26-2026-08-06-strength", weekNo: 3, date: "2026-08-06", dayOfWeek: "Thu", type: "fill", category: "strength", title: "Strength — max-strength", structure: "Max-strength: back squat 4×5, RDL 4×5, BSS 3×6/leg, heavy calves. ~45min. Run first, lift after.", zoneRefs: [], order: 4, intraDayOrder: 1, loadContribution: 150, status: "planned", actual: null },
+
+  // W4 — Max-strength + plyo (Tue + Thu)
+  { pk: PLAN_PK, sk: "WEEK#04#SES#str-tue", sessionId: "amsterdam26-2026-08-11-strength", weekNo: 4, date: "2026-08-11", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — max-strength + plyo", structure: "Max-strength + plyo: back squat 4×5, RDL 4×5, BSS 3×6/leg, heavy calves, pogo hops + box jumps. ~50min. Run first, lift after.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 150, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#04#SES#str-thu", sessionId: "amsterdam26-2026-08-13-strength", weekNo: 4, date: "2026-08-13", dayOfWeek: "Thu", type: "fill", category: "strength", title: "Strength — max-strength + plyo", structure: "Max-strength + plyo: back squat 4×5, RDL 4×5, BSS 3×6/leg, heavy calves, pogo hops + box jumps. ~50min. Run first, lift after.", zoneRefs: [], order: 4, intraDayOrder: 1, loadContribution: 150, status: "planned", actual: null },
+
+  // W5 — Max-strength + plyo (Tue + Thu)
+  { pk: PLAN_PK, sk: "WEEK#05#SES#str-tue", sessionId: "amsterdam26-2026-08-18-strength", weekNo: 5, date: "2026-08-18", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — max-strength + plyo", structure: "Max-strength + plyo: back squat 4×5, RDL 4×5, BSS 3×6/leg, heavy calves, pogo hops + box jumps. ~50min. Run first, lift after.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 150, status: "planned", actual: null },
+  { pk: PLAN_PK, sk: "WEEK#05#SES#str-thu", sessionId: "amsterdam26-2026-08-20-strength", weekNo: 5, date: "2026-08-20", dayOfWeek: "Thu", type: "fill", category: "strength", title: "Strength — max-strength + plyo", structure: "Max-strength + plyo: back squat 4×5, RDL 4×5, BSS 3×6/leg, heavy calves, pogo hops + box jumps. ~50min. Run first, lift after.", zoneRefs: [], order: 4, intraDayOrder: 1, loadContribution: 150, status: "planned", actual: null },
+
+  // W6 — Maintenance, Tue only (down week — keep light)
+  { pk: PLAN_PK, sk: "WEEK#06#SES#str-tue", sessionId: "amsterdam26-2026-08-25-strength", weekNo: 6, date: "2026-08-25", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Maintenance", structure: "Maintenance: squat 2–3×5, RDL 2×5, calves, light plyo. ~30–35min. Run first.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 85, status: "planned", actual: null },
+
+  // W7 — Maintenance
+  { pk: PLAN_PK, sk: "WEEK#07#SES#str-tue", sessionId: "amsterdam26-2026-09-01-strength", weekNo: 7, date: "2026-09-01", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Maintenance", structure: "Maintenance: squat 2–3×5, RDL 2×5, calves, light plyo. ~30–35min. Run first.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 85, status: "planned", actual: null },
+
+  // W8 — Maintenance
+  { pk: PLAN_PK, sk: "WEEK#08#SES#str-tue", sessionId: "amsterdam26-2026-09-08-strength", weekNo: 8, date: "2026-09-08", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Maintenance", structure: "Maintenance: squat 2–3×5, RDL 2×5, calves, light plyo. ~30–35min. Run first.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 85, status: "planned", actual: null },
+
+  // W9 — Maintenance
+  { pk: PLAN_PK, sk: "WEEK#09#SES#str-tue", sessionId: "amsterdam26-2026-09-15-strength", weekNo: 9, date: "2026-09-15", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Maintenance", structure: "Maintenance: squat 2–3×5, RDL 2×5, calves, light plyo. ~30–35min. Run first.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 85, status: "planned", actual: null },
+
+  // W10 — Maintenance (tune-up half is Sun — keep well clear)
+  { pk: PLAN_PK, sk: "WEEK#10#SES#str-tue", sessionId: "amsterdam26-2026-09-22-strength", weekNo: 10, date: "2026-09-22", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Maintenance", structure: "Maintenance: squat 2–3×5, RDL 2×5, calves, light plyo. ~30–35min. Run first.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 85, status: "planned", actual: null },
+
+  // W11 — Primer (optional, droppable)
+  { pk: PLAN_PK, sk: "WEEK#11#SES#str-tue", sessionId: "amsterdam26-2026-09-29-strength", weekNo: 11, date: "2026-09-29", dayOfWeek: "Tue", type: "fill", category: "strength", title: "Strength — Primer", structure: "Primer (activation only): pogo hops 2×8, light squats 2×3, calf raises. ~15–20min.", zoneRefs: [], order: 2, intraDayOrder: 1, loadContribution: 30, status: "planned", actual: null },
+
+].map((s) => ({ ...s, targetDetail: generateTargetDetail(s as Session) })) as Session[];

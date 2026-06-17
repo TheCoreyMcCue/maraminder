@@ -147,6 +147,20 @@ function UnmatchedSheet({ onClose, onApplied }: { onClose: () => void; onApplied
                 {item.avgPacePerKm ? ` · ${fmtPace(item.avgPacePerKm)}` : ""}
               </div>
 
+              {item.lapMismatch && item.pendingLaps && (
+                <div style={{
+                  background: "#f59e0b12", border: "1px solid #f59e0b40",
+                  borderRadius: 6, padding: "6px 10px", marginBottom: 8, fontSize: 12,
+                }}>
+                  <span style={{ color: "#f59e0b", fontWeight: 600 }}>⚠ Lap count mismatch</span>
+                  <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                    {item.pendingLaps.filter((l) => l.label === "rep").length} work laps detected,
+                    {item.prescribedRepCount} prescribed.
+                    Confirm to log with auto-classified laps.
+                  </span>
+                </div>
+              )}
+
               {item.candidateSessions.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>

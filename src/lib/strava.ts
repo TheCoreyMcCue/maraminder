@@ -1,4 +1,5 @@
 import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import type { Lap } from "./types";
 import { docClient, TABLE_NAME } from "./db";
 
 export const STRAVA_PK = "INTEGRATION#strava";
@@ -33,6 +34,10 @@ export interface StravaUnmatched {
     title: string;
   }>;
   importedAt: string;
+  // Set when lap count ≠ prescribed — user must confirm before committing
+  lapMismatch?: boolean;
+  pendingLaps?: Lap[];
+  prescribedRepCount?: number;
 }
 
 export async function getTokenRecord(): Promise<StravaTokenRecord | null> {

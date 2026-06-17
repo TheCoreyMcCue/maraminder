@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { QueryCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { QueryCommand, PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, TABLE_NAME } from "@/lib/db";
 import { PLANS, planPk } from "@/lib/activePlan";
 import { logActual } from "@/lib/planOps";
@@ -9,7 +9,17 @@ import {
   updateLastSyncEpoch,
   STRAVA_PK,
 } from "@/lib/strava";
-import type { Session } from "@/lib/types";
+import type { Session, ZoneSet } from "@/lib/types";
+import {
+  zoneWorkKey,
+  isQualityCategory,
+  classifyLaps,
+  annotateLapCompletion,
+  parseRepCount,
+  buildWorkSummary,
+  deriveSegments,
+} from "@/lib/lapUtils";
+import type { StravaLapRaw } from "@/lib/lapUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +49,25 @@ function stravaTypeToCategory(activity: StravaActivity): "run" | "bike" | null {
   if (t === "run" || t === "trailrun" || t === "virtualrun") return "run";
   if (t === "ride" || t === "virtualride" || t === "ebikeride" || t === "mountainbikeride") return "bike";
   return null;
+}
+
+// ── Zone set fetcher (cached per plan per sync run) ───────────────────────────
+
+const zoneCache = new Map<string, ZoneSet | null>();
+
+async function fetchZoneSet(pid: string): Promise<ZoneSet | null> {
+  if (zoneCache.has(pid)) return zoneCache.get(pid)!;
+  const pk = planPk(pid);
+  const meta = await docClient.send(
+    new GetCommand({ TableName: TABLE_NAME, Key: { pk, sk: "META" } })
+  );
+  const version = (meta.Item?.currentZoneVersion as number) ?? 1;
+  const zr = await docClient.send(
+    new GetCommand({ TableName: TABLE_NAME, Key: { pk, sk: `ZONES#${version}` } })
+  );
+  const result = zr.Item ? (zr.Item as ZoneSet) : null;
+  zoneCache.set(pid, result);
+  return result;
 }
 
 // ── Pace formatter ────────────────────────────────────────────────────────────
@@ -144,7 +173,7 @@ async function runSync(): Promise<{
     if (candidates.length === 1) {
       // Clean match — auto-apply
       const { planId, session } = candidates[0];
-      const actual = {
+      const base = {
         distanceKm: parseFloat((activity.distance / 1000).toFixed(2)),
         durationMin: parseFloat((activity.moving_time / 60).toFixed(1)),
         avgPacePerKm: broadType === "run" ? paceFromActivity(activity) : undefined,
@@ -153,6 +182,83 @@ async function runSync(): Promise<{
         stravaUrl: `https://www.strava.com/activities/${activity.id}`,
         stravaActivityId: activity.id,
       };
+
+      // For quality sessions, fetch laps and classify them
+      let lapEnrichment: {
+        laps?: typeof base extends never ? never : import("@/lib/types").Lap[];
+        workSummary?: import("@/lib/types").WorkSummary;
+        segmentPace?: Partial<Record<import("@/lib/types").ZoneKey, string>>;
+        segmentHr?: Partial<Record<import("@/lib/types").ZoneKey, number>>;
+      } = {};
+
+      if (broadType === "run" && isQualityCategory(session.category)) {
+        try {
+          const workZone = zoneWorkKey(session.category);
+          const zones = workZone ? await fetchZoneSet(planId) : null;
+
+          if (workZone && zones) {
+            const rawLaps = await stravaFetch<StravaLapRaw[]>(
+              `/activities/${activity.id}/laps`
+            );
+
+            if (rawLaps.length > 0) {
+              const laps = annotateLapCompletion(
+                classifyLaps(rawLaps, workZone, zones),
+                session.structure,
+              );
+              const workCount = laps.filter((l) => l.label === "rep").length;
+              const prescribed = parseRepCount(session.structure);
+
+              if (prescribed !== null && workCount !== prescribed) {
+                // Mismatch — queue for manual confirm rather than auto-committing
+                const candidateInfo = [{
+                  planId,
+                  sk: session.sk,
+                  date: session.date,
+                  category: session.category,
+                  title: session.title,
+                }];
+                await docClient.send(
+                  new PutCommand({
+                    TableName: TABLE_NAME,
+                    Item: {
+                      pk: STRAVA_PK,
+                      sk: `UNMATCHED#${activity.id}`,
+                      activityId: activity.id,
+                      activityName: activity.name,
+                      date: localDate,
+                      sportType: activity.sport_type ?? activity.type,
+                      ...base,
+                      candidateSessions: candidateInfo,
+                      importedAt: now,
+                      lapMismatch: true,
+                      pendingLaps: laps,
+                      prescribedRepCount: prescribed,
+                    },
+                  })
+                );
+                unmatched++;
+                continue;
+              }
+
+              // Count matches — enrich
+              const workSummary = workZone ? buildWorkSummary(laps, workZone) : null;
+              const { segmentPace, segmentHr } = deriveSegments(laps);
+              lapEnrichment = {
+                laps,
+                workSummary: workSummary ?? undefined,
+                segmentPace: Object.keys(segmentPace).length > 0 ? segmentPace : undefined,
+                segmentHr:   Object.keys(segmentHr).length   > 0 ? segmentHr   : undefined,
+              };
+            }
+          }
+        } catch (lapErr) {
+          // Non-fatal — log and continue without lap data
+          console.warn(`[strava/sync] lap fetch failed for ${activity.id}:`, lapErr);
+        }
+      }
+
+      const actual = { ...base, ...lapEnrichment };
       try {
         await logActual(planPk(planId), session.sk, actual);
         matched++;

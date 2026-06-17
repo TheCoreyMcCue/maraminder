@@ -51,7 +51,11 @@ export async function getPlan(planId?: string): Promise<PlanData> {
 
   allZones.sort((a, b) => a.version - b.version);
   weeks.sort((a, b) => a.weekNo - b.weekNo);
-  sessions.sort((a, b) => a.order - b.order);
+  sessions.sort((a, b) =>
+    a.order !== b.order
+      ? a.order - b.order
+      : (a.intraDayOrder ?? 0) - (b.intraDayOrder ?? 0)
+  );
 
   const currentZones =
     allZones.find((z) => z.version === meta!.currentZoneVersion) ||
@@ -71,7 +75,11 @@ export async function getWeekData(weekNo: number, planId?: string): Promise<{
   if (!week) throw new Error(`Week ${weekNo} not found`);
   const sessions = plan.sessions
     .filter((s) => s.weekNo === weekNo)
-    .sort((a, b) => a.order - b.order);
+    .sort((a, b) =>
+      a.order !== b.order
+        ? a.order - b.order
+        : (a.intraDayOrder ?? 0) - (b.intraDayOrder ?? 0)
+    );
   return { week, sessions, currentZones: plan.currentZones, meta: plan.meta };
 }
 

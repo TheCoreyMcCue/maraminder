@@ -11,6 +11,7 @@ const colors: Record<SessionCategory, string> = {
   race: "var(--cat-race)",
   bike: "#0ea5e9",
   brick: "#e879f9",
+  strength: "#f59e0b",
 };
 
 const labels: Record<SessionCategory, string> = {
@@ -24,6 +25,7 @@ const labels: Record<SessionCategory, string> = {
   race: "Race",
   bike: "Bike",
   brick: "Brick",
+  strength: "Strength",
 };
 
 export default function CategoryPill({ category }: { category: SessionCategory }) {

@@ -1,8 +1,18 @@
 "use client";
 import { useState } from "react";
-import type { Session, ZoneSet, Actual, ZoneKey } from "@/lib/types";
+import type { Session, ZoneSet, Actual, ZoneKey, Lap } from "@/lib/types";
 import { formatSessionTarget, computePaceFromDistTime, parseTimeToMinutes, minutesToTimeStr } from "@/lib/zones";
 import { logActual } from "@/lib/planOps";
+import {
+  isQualityCategory,
+  zoneWorkKey,
+  parseRepCount,
+  parsePaceSec,
+  fmtPace,
+  buildWorkSummary,
+  deriveSegments,
+  annotateLapCompletion,
+} from "@/lib/lapUtils";
 
 interface Props {
   session: Session;
@@ -34,7 +44,129 @@ const CATEGORY_QUALITY_ZONES: Partial<Record<string, ZoneKey[]>> = {
   brick:     ["MP"],
 };
 
+// ── Strength log modal (minimal: done + RPE + notes + optional top sets) ──────
+
+function StrengthLogModal({ session, onClose, onSaved }: Omit<Props, "zones" | "ftpW">) {
+  const existing = session.actual;
+  const [rpe, setRpe] = useState(existing?.rpe?.toString() ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [topSets, setTopSets] = useState<Array<{ exercise: string; weightKg: string; reps: string }>>(() =>
+    existing?.topSets?.map((ts) => ({
+      exercise: ts.exercise,
+      weightKg: ts.weightKg.toString(),
+      reps: ts.reps.toString(),
+    })) ?? []
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    const builtTopSets = topSets
+      .filter((ts) => ts.exercise.trim())
+      .map((ts) => ({
+        exercise: ts.exercise.trim(),
+        weightKg: parseFloat(ts.weightKg) || 0,
+        reps: parseInt(ts.reps) || 0,
+      }));
+
+    const actual: Omit<import("@/lib/types").Actual, "targetSnapshot"> = {
+      distanceKm: 0,
+      durationMin: 0,
+      rpe: rpe ? parseInt(rpe) : undefined,
+      notes: notes.trim() || undefined,
+      topSets: builtTopSets.length > 0 ? builtTopSets : undefined,
+    };
+    await logActual(session.pk, session.sk, actual);
+    setSaving(false);
+    onSaved();
+  }
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{session.title}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>
+          {session.structure}
+        </div>
+
+        {/* RPE */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <Field label="RPE (1–10)">
+            <input type="number" inputMode="numeric" min={1} max={10} value={rpe}
+              onChange={(e) => setRpe(e.target.value)} style={inputStyle} placeholder="—" />
+          </Field>
+        </div>
+
+        {/* Top sets */}
+        {topSets.length > 0 && (
+          <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: 8 }}>TOP SETS</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px", gap: 8, marginBottom: 6 }}>
+              {["Exercise", "kg", "Reps"].map((h) => (
+                <span key={h} style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)" }}>{h}</span>
+              ))}
+            </div>
+            {topSets.map((ts, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px", gap: 8, marginBottom: 7, alignItems: "center" }}>
+                <input type="text" value={ts.exercise}
+                  onChange={(e) => setTopSets((prev) => prev.map((r, j) => j === i ? { ...r, exercise: e.target.value } : r))}
+                  style={{ ...inputStyle, fontSize: 13 }} placeholder="Back squat" />
+                <input type="number" inputMode="decimal" value={ts.weightKg}
+                  onChange={(e) => setTopSets((prev) => prev.map((r, j) => j === i ? { ...r, weightKg: e.target.value } : r))}
+                  style={{ ...inputStyle, fontSize: 13 }} placeholder="100" />
+                <input type="number" inputMode="numeric" value={ts.reps}
+                  onChange={(e) => setTopSets((prev) => prev.map((r, j) => j === i ? { ...r, reps: e.target.value } : r))}
+                  style={{ ...inputStyle, fontSize: 13 }} placeholder="5" />
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              <button type="button" onClick={() => setTopSets((prev) => [...prev, { exercise: "", weightKg: "", reps: "" }])}
+                style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}>
+                + set
+              </button>
+              {topSets.length > 0 && (
+                <button type="button" onClick={() => setTopSets((prev) => prev.slice(0, -1))}
+                  style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}>
+                  − set
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Add first set button */}
+        {topSets.length === 0 && (
+          <button type="button"
+            onClick={() => setTopSets([{ exercise: "", weightKg: "", reps: "" }])}
+            style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 12px", cursor: "pointer", marginBottom: 12, width: "100%" }}>
+            + Add top set (optional)
+          </button>
+        )}
+
+        {/* Notes */}
+        <Field label="NOTES" style={{ marginBottom: 20 }}>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+            rows={3} style={{ ...inputStyle, resize: "vertical" }} placeholder="How did it feel?" />
+        </Field>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={secondaryBtn}>Cancel</button>
+          <button onClick={handleSave} disabled={saving}
+            style={{ ...primaryBtn, opacity: saving ? 0.5 : 1 }}>
+            {saving ? "Saving…" : "Mark done"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Props) {
+  if (session.category === "strength") {
+    return <StrengthLogModal session={session} onClose={onClose} onSaved={onSaved} />;
+  }
+
   const existing = session.actual;
 
   const [dist, setDist] = useState(existing?.distanceKm?.toString() ?? session.targetDistanceKm?.toString() ?? "");
@@ -73,6 +205,19 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
 
   const isCycling = session.category === "bike" || session.category === "brick";
   const showDecoupling = ["long", "mp"].includes(session.category);
+
+  // Manual rep breakdown — for threshold/mp/long sessions
+  const showRepBreakdown = isQualityCategory(session.category) && !isCycling;
+  const workZone = zoneWorkKey(session.category);
+  const prescribedRepCount = parseRepCount(session.structure) ?? 0;
+  const repRowCount = prescribedRepCount > 0 ? prescribedRepCount : (showRepBreakdown ? 3 : 0);
+  const [repRows, setRepRows] = useState<Array<{ pace: string; hr: string }>>(() => {
+    const existingLaps = existing?.laps?.filter((l) => l.label === "rep") ?? [];
+    if (existingLaps.length > 0) {
+      return existingLaps.map((l) => ({ pace: l.avgPace === "—" ? "" : l.avgPace, hr: l.avgHr?.toString() ?? "" }));
+    }
+    return Array.from({ length: repRowCount }, () => ({ pace: "", hr: "" }));
+  });
 
   // Quality zones to show in the block section.
   // Anchor sessions show all 4 quality zones — they often have multiple effort layers
@@ -124,13 +269,56 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
       if (v.trim()) builtSegmentPace[k as ZoneKey] = v.trim();
     }
 
+    // Build manual laps from rep rows (if any pace/hr filled in)
+    const filledReps = repRows.filter((r) => r.pace.trim() || r.hr.trim());
+    let builtLaps: Lap[] | undefined;
+    let builtWorkSummary: Actual["workSummary"];
+    let lapSegmentPace: Actual["segmentPace"];
+    let lapSegmentHr: Actual["segmentHr"];
+
+    if (showRepBreakdown && filledReps.length > 0 && workZone) {
+      // Build a Lap per rep. Duration/distance not known precisely — compute from pace
+      // and target rep duration if available from the structure (best effort).
+      const repDurSec = (() => {
+        const m = session.structure.match(/×(\d+)min/);
+        return m ? parseInt(m[1]) * 60 : 0;
+      })();
+
+      builtLaps = repRows.map((row, i) => {
+        const paceStr   = row.pace.trim();
+        const paceSec   = paceStr ? parsePaceSec(paceStr) : 0;
+        const distKm    = paceSec > 0 && repDurSec > 0 ? parseFloat((repDurSec / paceSec).toFixed(3)) : 0;
+        return {
+          lapIndex: i,
+          label: "rep" as const,
+          repNo: i + 1,
+          zone: workZone,
+          durationSec: repDurSec,
+          distanceKm: distKm,
+          avgPace: paceStr || "—",
+          avgHr:  row.hr.trim() ? parseInt(row.hr) : undefined,
+        } satisfies Lap;
+      });
+
+      builtLaps = annotateLapCompletion(builtLaps, session.structure);
+      const ws = buildWorkSummary(builtLaps, workZone);
+      builtWorkSummary = ws ?? undefined;
+
+      // Derive segmentPace/Hr — override manual entries when laps exist
+      const { segmentPace: lsp, segmentHr: lsh } = deriveSegments(builtLaps);
+      if (Object.keys(lsp).length > 0) lapSegmentPace = lsp;
+      if (Object.keys(lsh).length > 0) lapSegmentHr   = lsh;
+    }
+
     const actual: Omit<Actual, "targetSnapshot"> = {
       distanceKm: parseDecimal(dist),
       durationMin: parseTimeToMinutes(dur),
       avgPacePerKm: computedPace !== "—" ? computedPace : undefined,
       avgHr: overallHr ? parseInt(overallHr) : undefined,
-      segmentHr: Object.keys(builtSegmentHr).length > 0 ? builtSegmentHr : undefined,
-      segmentPace: Object.keys(builtSegmentPace).length > 0 ? builtSegmentPace : undefined,
+      laps: builtLaps,
+      workSummary: builtWorkSummary,
+      segmentHr:   lapSegmentHr   ?? (Object.keys(builtSegmentHr).length   > 0 ? builtSegmentHr   : undefined),
+      segmentPace: lapSegmentPace ?? (Object.keys(builtSegmentPace).length > 0 ? builtSegmentPace : undefined),
       rpe: rpe ? parseInt(rpe) : undefined,
       notes: notes || undefined,
       stravaUrl: stravaUrl.trim() || undefined,
@@ -292,6 +480,68 @@ export default function LogModal({ session, zones, ftpW, onClose, onSaved }: Pro
             </div>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
               Durability signal — HR drift at constant pace.
+            </div>
+          </div>
+        )}
+
+        {/* Manual rep breakdown — threshold / mp / long */}
+        {showRepBreakdown && repRows.length > 0 && (
+          <div style={{
+            background: "var(--surface-2)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: "12px 14px", marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: 10 }}>
+              REP BREAKDOWN {prescribedRepCount > 0 ? `(${prescribedRepCount} prescribed)` : ""}
+            </div>
+            {/* Header */}
+            <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 1fr", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>REP</span>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>PACE (/km)</span>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>HR (bpm)</span>
+            </div>
+            {repRows.map((row, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "40px 1fr 1fr", gap: 8, marginBottom: 7, alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
+                  {i + 1}
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={row.pace}
+                  onChange={(e) => setRepRows((prev) => prev.map((r, j) => j === i ? { ...r, pace: e.target.value } : r))}
+                  style={{ ...inputStyle, fontSize: 13 }}
+                  placeholder="3:58"
+                />
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={row.hr}
+                  onChange={(e) => setRepRows((prev) => prev.map((r, j) => j === i ? { ...r, hr: e.target.value } : r))}
+                  style={{ ...inputStyle, fontSize: 13 }}
+                  placeholder="182"
+                />
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => setRepRows((prev) => [...prev, { pace: "", hr: "" }])}
+                style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}
+              >
+                + rep
+              </button>
+              {repRows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setRepRows((prev) => prev.slice(0, -1))}
+                  style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}
+                >
+                  − rep
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+              Pace + HR for each work rep only — warmup/recovery not needed here.
             </div>
           </div>
         )}

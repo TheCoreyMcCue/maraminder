@@ -32,6 +32,8 @@ export interface Actual {
   rpe?: number;
   avgPowerW?: number;
   restTaken?: boolean;  // true when a fill session was consciously swapped for full rest
+  laps?: Lap[];
+  workSummary?: WorkSummary;
   notes?: string;
   stravaUrl?: string;
   stravaActivityId?: number;
@@ -44,7 +46,34 @@ export interface Actual {
     secondHalfHr?: number;
     paceHeldKm?: string;
   };
+  // Strength-specific top sets
+  topSets?: Array<{ exercise: string; weightKg: number; reps: number }>;
   targetSnapshot: Partial<Record<ZoneKey, string>>;
+}
+
+export type LapLabel = "warmup" | "rep" | "recovery" | "cooldown";
+
+export interface Lap {
+  lapIndex: number;
+  label: LapLabel;
+  repNo?: number;       // 1..N for work reps
+  zone: ZoneKey;
+  durationSec: number;
+  distanceKm: number;
+  avgPace: string;      // "M:SS"
+  avgHr?: number;
+  avgPowerW?: number;
+  avgCadence?: number;
+  completedAsPrescribed?: boolean;
+}
+
+export interface WorkSummary {
+  zone: ZoneKey;
+  repCount: number;
+  avgPace: string;
+  avgHr?: number;
+  fadeSecPerKm: number;  // last rep pace − first rep pace (+ = slowed)
+  hrDriftBpm?: number;   // last rep HR − first rep HR
 }
 
 export type SessionStatus = "planned" | "done" | "skipped" | "moved";
@@ -58,23 +87,29 @@ export type SessionCategory =
   | "rest"
   | "race"
   | "bike"
-  | "brick";
+  | "brick"
+  | "strength";
 export type SessionType = "anchor" | "fill";
 
 export interface Session {
   pk: string;
   sk: string;
+  sessionId?: string;       // stable human-readable id, e.g. "amsterdam26-2026-08-11-strength"
   weekNo: number;
   date: string;
   dayOfWeek: string;
   type: SessionType;
   category: SessionCategory;
   title: string;
+  purpose?: string;         // one-line "why" for this session
   structure: string;
   zoneRefs: ZoneKey[];
   targetDurationMin?: number;
   targetDistanceKm?: number;
+  targetDetail?: string;
   order: number;
+  intraDayOrder?: number;   // 0 = run/rest (default), 1 = strength (renders below same-day run)
+  loadContribution?: number; // strength load units, used for plannedLoad / actualLoad
   status: SessionStatus;
   actual: Actual | null;
 }

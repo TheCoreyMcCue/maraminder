@@ -33,6 +33,7 @@ const LOG_LABEL: Partial<Record<import("@/lib/types").SessionCategory, string>> 
   race:      "Log race",
   bike:      "Log ride",
   brick:     "Log brick",
+  strength:  "Log session",
   rest:      "Log",
 };
 
@@ -51,7 +52,7 @@ export default function SessionCard({
   const color = categoryColors[session.category];
   const isDone = session.status === "done";
   const isSkipped = session.status === "skipped";
-  const isSplittable = !isDone && !isSkipped && session.category !== "rest";
+  const isSplittable = !isDone && !isSkipped && session.category !== "rest" && session.category !== "strength";
 
   async function handleDelete() {
     if (!planId) return;
@@ -98,47 +99,45 @@ export default function SessionCard({
         userSelect: "none",
       }}>
 
-        {/* Drag handle — top-right grip */}
-        {dragListeners && (
-          <div
-            {...dragListeners}
-            {...dragAttributes}
-            style={{
-              position: "absolute",
-              top: 10,
-              right: 10,
-              width: 28,
-              height: 28,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "grab",
-              color: "var(--border)",
-              borderRadius: 4,
-              touchAction: "none",
-              WebkitTapHighlightColor: "transparent",
-            }}
-            title="Drag to move"
-          >
-            <GripIcon />
-          </div>
-        )}
-
-        {/* Category + anchor badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: session.type === "anchor" ? 3 : 6, paddingRight: dragListeners ? 28 : 0 }}>
+        {/* Category + anchor badge + controls row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: session.type === "anchor" ? 3 : 6 }}>
           <CategoryPill category={session.category} />
-          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
             {isDone && <span style={{ fontSize: 16, color: "#22c55e" }}>✓</span>}
             <button
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={() => setShowDetail(true)}
               title="View details"
               style={{
-                background: "none", border: "none", cursor: "pointer", padding: "2px 4px",
+                background: "none", border: "none", cursor: "pointer", padding: "4px 6px",
                 color: "var(--text-muted)", fontSize: 15, lineHeight: 1, borderRadius: 4,
+                touchAction: "manipulation",
               }}
             >
               ⓘ
             </button>
+            {dragListeners && (
+              <div
+                {...dragListeners}
+                {...dragAttributes}
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "grab",
+                  color: "var(--border)",
+                  borderRadius: 4,
+                  touchAction: "none",
+                  WebkitTapHighlightColor: "transparent",
+                  flexShrink: 0,
+                }}
+                title="Drag to move"
+              >
+                <GripIcon />
+              </div>
+            )}
           </span>
         </div>
         {session.type === "anchor" && (
@@ -183,6 +182,23 @@ export default function SessionCard({
           }}>
             {session.actual.restTaken ? (
               <span style={{ color: "#22c55e", fontWeight: 700 }}>✦ Full rest — recovery investment</span>
+            ) : session.category === "strength" ? (
+              <>
+                <span style={{ color: "#22c55e", fontWeight: 700 }}>✓ Done</span>
+                {session.actual.rpe != null && ` · RPE ${session.actual.rpe}`}
+                {session.actual.topSets && session.actual.topSets.length > 0 && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    {session.actual.topSets.map((ts, i) => (
+                      <span key={i}>{i > 0 ? " · " : ""}{ts.exercise} {ts.weightKg}kg×{ts.reps}</span>
+                    ))}
+                  </div>
+                )}
+                {session.actual.notes && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    {session.actual.notes}
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <span style={{ color: "#22c55e", fontWeight: 700 }}>Logged: </span>
