@@ -92,9 +92,12 @@ export function computeLoadFactor(
   const hrMax = baseline.hrMax ?? HR_MAX_DEFAULT;
   const hrRest = baseline.hrRest ?? HR_REST_DEFAULT;
 
+  // Cap only for intentional low-load phases: pre-race taper and race week itself.
+  // isDownWeek and "Post-race recovery" are excluded — the load in those contexts is
+  // real (e.g. the race happened yesterday) and should be reflected in the score.
   const isTaperWeek = currentWeek != null && (
-    currentWeek.isDownWeek ||
-    /taper|race|down/i.test(currentWeek.phase)
+    /taper/i.test(currentWeek.phase) ||
+    /^race\s*(week|wk)\b/i.test(currentWeek.phase)
   );
 
   // ── Training load (ACWR) ──
@@ -277,7 +280,7 @@ function buildCopy(
   if (insufficient) {
     parts.push(`training history building (need ${MIN_LOGGED_FOR_FULL_ACWR} logged sessions for full ACWR)`);
   } else if (isTaperWeek) {
-    parts.push(`taper/down week — load ratio reads high by design, not a concern (ACWR ${acwr.toFixed(2)})`);
+    parts.push(`taper/race week — load ratio reads high by design, not a concern (ACWR ${acwr.toFixed(2)})`);
   } else if (acwr > ACWR_SAFE_HI) {
     parts.push(`acute:chronic ratio ${acwr.toFixed(2)} — above the safe window`);
   } else if (acwr >= ACWR_LOW) {
@@ -315,7 +318,7 @@ function buildCopy(
   if (restTaken) parts.push("full rest taken today — recovery investment applied ✦");
 
   const dominantHeadline = (): string => {
-    if (isTaperWeek) return "Taper/down week — body absorbing the work";
+    if (isTaperWeek) return "Taper/race week — body absorbing the work";
     if (level === "green") return acwr > 1.0 ? "Strong adaptation signal" : "Body load manageable";
     if (level === "critical") return "Critical load — pull back now";
     if (dominant === "recoveryScore") {
