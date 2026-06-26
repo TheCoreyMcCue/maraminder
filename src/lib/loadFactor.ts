@@ -19,10 +19,21 @@ const CAT_HRR: Record<string, number> = {
   long: 0.60, race: 0.90, bike: 0.55, brick: 0.75, rest: 0,
 };
 
-// Typical HRR for seeding chronic load from typicalWeeklyHours.
+// Typical HRR for seeding chronic EWMA from typicalWeeklyHours.
 const TYPICAL_HRR = 0.65;
 
-// Once this many sessions are logged, actual data drives the chronic load fully.
+// ── EWMA-ACWR parameters (Williams/Murray 2017) ──────────
+// Exposed as named constants so callers can reference the window lengths.
+export const EWMA_ACUTE_N   = 7;                          // acute window (days)
+export const EWMA_CHRONIC_N = 28;                         // chronic window (days)
+const LAMBDA_A = 2 / (EWMA_ACUTE_N   + 1);               // 0.25
+const LAMBDA_C = 2 / (EWMA_CHRONIC_N + 1);               // ≈ 0.0690
+
+// Days of history used to run the EWMAs forward from the seed.
+// 60 days reduces the seed's influence on chronic to < 2 % ((1-λ_c)^60 ≈ 0.013).
+const EWMA_HISTORY_DAYS = 60;
+
+// Once this many sessions are logged, the seed has negligible structural influence.
 const MIN_LOGGED_FOR_FULL_ACWR = 10;
 
 // Component weights — must sum to 100.
@@ -33,13 +44,13 @@ export interface LoadFactorResult {
   level: LoadLevel;
   restBonus: number;
   training: {
-    acute: number;
-    chronic: number;
-    ratio: number;
-    score: number;        // 0–40
+    acuteEwma: number;   // EWMA over last ~7 days (TRIMP units)
+    chronicEwma: number; // EWMA over last ~28 days (TRIMP units)
+    ratio: number;       // acuteEwma / chronicEwma
+    score: number;       // 0–40
     insufficient: boolean;
     taperCapped: boolean;
-    acwrColor: string;    // green / amber / red by zone
+    acwrColor: string;   // green / amber / red by zone
   };
   legFatigue: {
     value: number | null;
@@ -65,8 +76,8 @@ function lerp(x: number, x0: number, x1: number, y0: number, y1: number): number
 }
 
 function acwrToScore(acwr: number): number {
-  if (acwr <= ACWR_LOW)     return lerp(acwr, 0,         ACWR_LOW,     0,  4);
-  if (acwr <= ACWR_SAFE_HI) return lerp(acwr, ACWR_LOW,  ACWR_SAFE_HI, 4,  10);
+  if (acwr <= ACWR_LOW)     return lerp(acwr, 0,           ACWR_LOW,     0,  4);
+  if (acwr <= ACWR_SAFE_HI) return lerp(acwr, ACWR_LOW,    ACWR_SAFE_HI, 4,  10);
   if (acwr <= ACWR_WARN_HI) return lerp(acwr, ACWR_SAFE_HI, ACWR_WARN_HI, 10, 28);
   return Math.min(40, lerp(acwr, ACWR_WARN_HI, ACWR_DANGER, 28, 40));
 }
@@ -75,6 +86,111 @@ function acwrColor(acwr: number): string {
   if (acwr > ACWR_WARN_HI) return "#ef4444";
   if (acwr > ACWR_SAFE_HI) return "#f59e0b";
   return "#22c55e";
+}
+
+// ── Banister TRIMP for a single session ──────────────────
+// Exported so the /api/export route can build the same daily-load series.
+
+export function sessionTrimp(
+  s: Session,
+  ftpW?: number,
+  hrMax = HR_MAX_DEFAULT,
+  hrRest = HR_REST_DEFAULT,
+): number {
+  const a = s.actual;
+  const dur = a?.durationMin ?? s.targetDurationMin ?? 0;
+  if (!dur) return 0;
+
+  // Power-based: derive HRR from IF (avgPower/FTP) for consistent TRIMP currency.
+  if ((s.category === "bike" || s.category === "brick") && a?.avgPowerW && ftpW) {
+    const hrr = Math.min(1, Math.max(0, a.avgPowerW / ftpW));
+    return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
+  }
+
+  // Heart-rate based, then RPE-based, then category default.
+  let hrr: number;
+  if (a?.avgHr != null) {
+    hrr = Math.min(1, Math.max(0, (a.avgHr - hrRest) / (hrMax - hrRest)));
+  } else if (a?.rpe != null) {
+    hrr = Math.min(1, Math.max(0, a.rpe / 10));
+  } else {
+    hrr = CAT_HRR[s.category] ?? 0.65;
+  }
+
+  return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
+}
+
+// ── EWMA runner (pure — no side effects, no Date.now()) ──
+
+/**
+ * Run both EWMAs forward from (asOf − EWMA_HISTORY_DAYS) to asOf.
+ * Both are seeded at seedDailyLoad. Days absent from dailyLoads are treated
+ * as 0 — the EWMAs decay on every rest day, which is essential for the
+ * smooth-decay property.
+ *
+ * Exported so the /api/export route can call it with its own load map.
+ */
+export function runEwma(
+  dailyLoads: Map<string, number>,
+  asOf: string,
+  seedDailyLoad: number,
+): { acuteEwma: number; chronicEwma: number } {
+  let acuteEwma   = seedDailyLoad;
+  let chronicEwma = seedDailyLoad;
+
+  const cur = new Date(asOf + "T12:00:00");
+  cur.setDate(cur.getDate() - EWMA_HISTORY_DAYS);
+  const end = new Date(asOf + "T12:00:00");
+
+  while (cur <= end) {
+    const d    = cur.toISOString().slice(0, 10);
+    const load = dailyLoads.get(d) ?? 0;
+    acuteEwma   = load * LAMBDA_A + acuteEwma   * (1 - LAMBDA_A);
+    chronicEwma = load * LAMBDA_C + chronicEwma * (1 - LAMBDA_C);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  return { acuteEwma, chronicEwma };
+}
+
+// ── EWMA-ACWR (main training load computation) ────────────
+
+function computeEwmaAcwr(
+  today: string,
+  sessions: Session[],
+  ftpW?: number,
+  typicalWeeklyHours?: number,
+  hrMax = HR_MAX_DEFAULT,
+  hrRest = HR_REST_DEFAULT,
+): { acuteEwma: number; chronicEwma: number; acwr: number; insufficient: boolean } {
+  // Convert typicalWeeklyHours → per-day TRIMP seed.
+  // Both EWMAs start here; real data blends in as the EWMA walks forward.
+  const weeklyTrimp = typicalWeeklyHours
+    ? typicalWeeklyHours * 60 * TYPICAL_HRR * 0.64 * Math.exp(1.92 * TYPICAL_HRR)
+    : 0;
+  const seedDailyLoad = weeklyTrimp / 7;
+
+  // Build date → TRIMP map. Multiple sessions on the same date are summed.
+  // Days with no sessions are intentionally absent (treated as 0 in runEwma).
+  const dailyLoads = new Map<string, number>();
+  for (const s of sessions) {
+    if (s.status !== "done" || !s.actual) continue;
+    const trimp = sessionTrimp(s, ftpW, hrMax, hrRest);
+    if (trimp > 0) dailyLoads.set(s.date, (dailyLoads.get(s.date) ?? 0) + trimp);
+  }
+
+  const done = sessions.filter((s) => s.status === "done" && s.actual);
+  const insufficient = seedDailyLoad === 0 && done.length < MIN_LOGGED_FOR_FULL_ACWR;
+
+  const { acuteEwma, chronicEwma } = runEwma(dailyLoads, today, seedDailyLoad);
+  const acwr = (insufficient || chronicEwma === 0) ? 0 : acuteEwma / chronicEwma;
+
+  return {
+    acuteEwma:   Math.round(acuteEwma   * 10) / 10,
+    chronicEwma: Math.round(chronicEwma * 10) / 10,
+    acwr:        Math.round(acwr        * 100) / 100,
+    insufficient,
+  };
 }
 
 // ── Main entry ────────────────────────────────────────────
@@ -100,11 +216,10 @@ export function computeLoadFactor(
     /^race\s*(week|wk)\b/i.test(currentWeek.phase)
   );
 
-  // ── Training load (ACWR) ──
-  const { acute, chronic, insufficient } = computeTrainingLoad(today, sessions, ftpW, typicalWeeklyHours, hrMax, hrRest);
-  const acwr = insufficient || chronic === 0
-    ? 0
-    : acute / chronic;
+  // ── Training load (EWMA-ACWR) ──
+  const { acuteEwma, chronicEwma, acwr, insufficient } =
+    computeEwmaAcwr(today, sessions, ftpW, typicalWeeklyHours, hrMax, hrRest);
+
   const rawTrainingScore = insufficient ? 0 : Math.round(acwrToScore(acwr));
   const trainingScore = isTaperWeek
     ? Math.min(10, rawTrainingScore)
@@ -142,13 +257,14 @@ export function computeLoadFactor(
   );
 
   // Recovery bonus for deliberate rest days — reduces total score by up to 4 points.
-  // More impactful when already loaded (up to 30% of current deficit).
   const restTakenToday = sessions.some(
     (s) => s.date === today && s.actual?.restTaken === true
   );
   const restBonus = restTakenToday ? Math.min(4, Math.round(recoveryScore * 0.3) + 1) : 0;
 
-  const score = Math.max(0, Math.min(100, trainingScore + fatigueScore + lifeScore + recoveryScore - restBonus));
+  const score = Math.max(0, Math.min(100,
+    trainingScore + fatigueScore + lifeScore + recoveryScore - restBonus
+  ));
 
   const level: LoadLevel =
     score >= 75 ? "critical" :
@@ -161,98 +277,19 @@ export function computeLoadFactor(
     level,
     restBonus,
     training: {
-      acute, chronic,
-      ratio: Math.round(acwr * 100) / 100,
-      score: trainingScore,
+      acuteEwma,
+      chronicEwma,
+      ratio:        Math.round(acwr * 100) / 100,
+      score:        trainingScore,
       insufficient,
-      taperCapped: isTaperWeek && rawTrainingScore > 10,
-      acwrColor: acwrColor(acwr),
+      taperCapped:  isTaperWeek && rawTrainingScore > 10,
+      acwrColor:    acwrColor(acwr),
     },
     legFatigue:      { value: todayFatigue, score: fatigueScore },
     recoveryDeficit: { hrvZ, rhrZ, score: recoveryScore },
     lifeStress:      { avg: lifeAvg != null ? Math.round(lifeAvg * 10) / 10 : null, score: lifeScore },
     ...buildCopy(level, acwr, lifeAvg, todayFatigue, hrvZ, rhrZ, score, insufficient, restTakenToday, isTaperWeek,
       { trainingScore, fatigueScore, recoveryScore, lifeScore }),
-  };
-}
-
-// ── Training load helpers ─────────────────────────────────
-
-// Banister TRIMP for a single session.
-// One unified load currency across run/bike regardless of how data was captured.
-function sessionLoad(s: Session, ftpW?: number, hrMax = HR_MAX_DEFAULT, hrRest = HR_REST_DEFAULT): number {
-  const a = s.actual;
-  const dur = a?.durationMin ?? s.targetDurationMin ?? 0;
-  if (!dur) return 0;
-
-  // Power-based: convert TSS → TRIMP-equivalent via same hrr path.
-  // Derive effective HRR from IF (avgPower/FTP) ≈ hrr proxy for consistency.
-  if ((s.category === "bike" || s.category === "brick") && a?.avgPowerW && ftpW) {
-    const hrr = Math.min(1, Math.max(0, a.avgPowerW / ftpW));
-    return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
-  }
-
-  // Derive HRR from best available source, then run Banister formula uniformly.
-  let hrr: number;
-  if (a?.avgHr != null) {
-    hrr = Math.min(1, Math.max(0, (a.avgHr - hrRest) / (hrMax - hrRest)));
-  } else if (a?.rpe != null) {
-    hrr = Math.min(1, Math.max(0, a.rpe / 10));
-  } else {
-    hrr = CAT_HRR[s.category] ?? 0.65;
-  }
-
-  return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
-}
-
-function isoMinusDays(iso: string, days: number): string {
-  const d = new Date(iso + "T12:00:00");
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-function computeTrainingLoad(
-  today: string,
-  sessions: Session[],
-  ftpW?: number,
-  typicalWeeklyHours?: number,
-  hrMax = HR_MAX_DEFAULT,
-  hrRest = HR_REST_DEFAULT,
-): { acute: number; chronic: number; insufficient: boolean } {
-  const day7  = isoMinusDays(today, 7);
-  const day28 = isoMinusDays(today, 28);
-
-  const done = sessions.filter((s) =>
-    s.date <= today && s.date > day28 && s.status === "done" && s.actual
-  );
-
-  const acute = done
-    .filter((s) => s.date > day7)
-    .reduce((sum, s) => sum + sessionLoad(s, ftpW, hrMax, hrRest), 0);
-
-  // Seeded chronic: convert typicalWeeklyHours to TRIMP using TYPICAL_HRR.
-  // durationMin/week × hrr × 0.64 × exp(1.92 × hrr) = weekly TRIMP equivalent.
-  const seededChronic = typicalWeeklyHours
-    ? typicalWeeklyHours * 60 * TYPICAL_HRR * 0.64 * Math.exp(1.92 * TYPICAL_HRR)
-    : 0;
-
-  // Data-driven chronic: 28-day total normalised to a 7-day window.
-  const dataChronic = done.length > 0
-    ? (done.reduce((sum, s) => sum + sessionLoad(s, ftpW, hrMax, hrRest), 0) / 28) * 7
-    : 0;
-
-  // Blend: weight shifts from seeded → data as more sessions accumulate.
-  const dataWeight = Math.min(1, done.length / MIN_LOGGED_FOR_FULL_ACWR);
-  const chronic = seededChronic > 0
-    ? seededChronic * (1 - dataWeight) + dataChronic * dataWeight
-    : dataChronic;
-
-  const insufficient = seededChronic === 0 && done.length < 5;
-
-  return {
-    acute: Math.round(acute),
-    chronic: Math.round(chronic),
-    insufficient,
   };
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, TABLE_NAME } from "@/lib/db";
+import { runEwma, EWMA_ACUTE_N, EWMA_CHRONIC_N } from "@/lib/loadFactor";
 
 const EXPORT_KEY = process.env.EXPORT_KEY;
 const ALL_PLAN_IDS = ["amsterdam26", "bridge-2026"];
@@ -70,6 +71,44 @@ function strip(item: Record<string, unknown>): Record<string, unknown> {
   return rest;
 }
 
+// ── Banister TRIMP (used only for EWMA-ACWR; keeps same formula as loadFactor.ts) ──
+
+const HR_MAX_DEFAULT  = 194;
+const HR_REST_DEFAULT = 47;
+const TYPICAL_HRR     = 0.65;
+
+const CAT_HRR_EXPORT: Record<string, number> = {
+  easy: 0.55, steady: 0.75, mp: 0.82, threshold: 0.88, vo2: 0.95,
+  long: 0.60, race: 0.90, bike: 0.55, brick: 0.75, rest: 0,
+};
+
+function sessionTrimpExport(
+  s: Record<string, unknown>,
+  ftpW?: number,
+  hrMax = HR_MAX_DEFAULT,
+  hrRest = HR_REST_DEFAULT,
+): number {
+  const a   = s.actual as Record<string, unknown> | null;
+  const cat = s.category as string;
+  const dur = ((a?.durationMin ?? s.targetDurationMin ?? 0) as number);
+  if (!dur) return 0;
+
+  if ((cat === "bike" || cat === "brick") && a?.avgPowerW && ftpW) {
+    const hrr = Math.min(1, Math.max(0, (a.avgPowerW as number) / ftpW));
+    return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
+  }
+
+  let hrr: number;
+  if (a?.avgHr != null) {
+    hrr = Math.min(1, Math.max(0, ((a.avgHr as number) - hrRest) / (hrMax - hrRest)));
+  } else if (a?.rpe != null) {
+    hrr = Math.min(1, Math.max(0, (a.rpe as number) / 10));
+  } else {
+    hrr = CAT_HRR_EXPORT[cat] ?? 0.65;
+  }
+  return dur * hrr * 0.64 * Math.exp(1.92 * hrr);
+}
+
 // ── Load estimation (used for weekly derived stats) ──────────────────────────
 
 const EST_RPE: Record<string, number> = {
@@ -102,6 +141,7 @@ interface BaselineShape {
   rhr?: { mean?: number };
   sleepTargetHours?: number;
   ftpW?: number;
+  typicalWeeklyHours?: number;
 }
 
 function computeDailyReadiness(r: Record<string, unknown>, bl: BaselineShape): number | null {
@@ -156,6 +196,18 @@ function buildPlanExport(
 
   const bl = (baseline ?? {}) as BaselineShape;
   const ftpW = bl.ftpW;
+
+  // Build date → TRIMP map for all done sessions (used by EWMA-ACWR per week).
+  const weeklyTrimp = bl.typicalWeeklyHours
+    ? bl.typicalWeeklyHours * 60 * TYPICAL_HRR * 0.64 * Math.exp(1.92 * TYPICAL_HRR)
+    : 0;
+  const seedDailyLoad = weeklyTrimp / 7;
+  const dailyTrimps = new Map<string, number>();
+  for (const s of sessionItems) {
+    if (s.status !== "done" || !s.actual) continue;
+    const trimp = sessionTrimpExport(s, ftpW);
+    if (trimp > 0) dailyTrimps.set(s.date as string, (dailyTrimps.get(s.date as string) ?? 0) + trimp);
+  }
 
   // Build date → weekNo lookup for recovery grouping
   const dateToWeek = new Map<string, number>();
@@ -242,6 +294,11 @@ function buildPlanExport(
         if (tw > 0) recoveryIndex = Math.round((ws / tw) * 10) / 10;
       }
 
+      // EWMA-ACWR as of this week's end date (or dateEnd, whichever is in data).
+      const ewmaAsOf = w.dateEnd as string;
+      const { acuteEwma, chronicEwma } = runEwma(dailyTrimps, ewmaAsOf, seedDailyLoad);
+      const ewmaAcwr = chronicEwma > 0 ? Math.round((acuteEwma / chronicEwma) * 100) / 100 : null;
+
       // Full week object — new week fields flow automatically
       return {
         ...strip(w),
@@ -256,6 +313,12 @@ function buildPlanExport(
         lifeStressLoad,
         totalLoad,
         recoveryIndex,
+        // EWMA-ACWR training load (Williams/Murray 2017); window lengths: acute=7d, chronic=28d
+        acuteEwma:   Math.round(acuteEwma   * 10) / 10,
+        chronicEwma: Math.round(chronicEwma * 10) / 10,
+        acwr:        ewmaAcwr,
+        ewmaWindowAcuteN:   EWMA_ACUTE_N,
+        ewmaWindowChronicN: EWMA_CHRONIC_N,
       };
     }),
 
